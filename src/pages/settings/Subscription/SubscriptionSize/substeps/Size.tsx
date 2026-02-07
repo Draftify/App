@@ -7,7 +7,7 @@ import Text from '@components/Text';
 import TextInput from '@components/TextInput';
 import useAutoFocusInput from '@hooks/useAutoFocusInput';
 import useLocalize from '@hooks/useLocalize';
-import useOnyx from '@hooks/useOnyx';
+import usePrivateSubscription from '@hooks/usePrivateSubscription';
 import useStepFormSubmit from '@hooks/useStepFormSubmit';
 import type {SubStepProps} from '@hooks/useSubStep/types';
 import useThemeStyles from '@hooks/useThemeStyles';
@@ -21,7 +21,7 @@ type SizeProps = SubStepProps;
 function Size({onNext}: SizeProps) {
     const {translate} = useLocalize();
     const styles = useThemeStyles();
-    const [privateSubscription] = useOnyx(ONYXKEYS.NVP_PRIVATE_SUBSCRIPTION);
+    const privateSubscription = usePrivateSubscription();
     const {inputCallbackRef} = useAutoFocusInput();
 
     const updateValuesAndNavigateToNextStep = useStepFormSubmit<typeof ONYXKEYS.FORMS.SUBSCRIPTION_SIZE_FORM>({
@@ -37,7 +37,7 @@ function Size({onNext}: SizeProps) {
 
     const validate = useCallback(
         (values: FormOnyxValues<typeof ONYXKEYS.FORMS.SUBSCRIPTION_SIZE_FORM>): FormInputErrors<typeof ONYXKEYS.FORMS.SUBSCRIPTION_SIZE_FORM> => {
-            const errors = getFieldRequiredErrors(values, [INPUT_IDS.SUBSCRIPTION_SIZE]);
+            const errors = getFieldRequiredErrors(values, [INPUT_IDS.SUBSCRIPTION_SIZE], translate);
             if (values[INPUT_IDS.SUBSCRIPTION_SIZE] && !isValidSubscriptionSize(values[INPUT_IDS.SUBSCRIPTION_SIZE])) {
                 errors.subscriptionSize = translate('subscription.subscriptionSize.error.size');
             }
@@ -72,6 +72,7 @@ function Size({onNext}: SizeProps) {
                     role={CONST.ROLE.PRESENTATION}
                     defaultValue={defaultValues[INPUT_IDS.SUBSCRIPTION_SIZE]}
                     shouldSaveDraft
+                    inputMode={CONST.INPUT_MODE.NUMERIC}
                 />
                 <Text style={[styles.formHelp, styles.mt2]}>{translate('subscription.subscriptionSize.eachMonth')}</Text>
                 <Text style={[styles.formHelp, styles.mt2]}>{translate('subscription.subscriptionSize.note')}</Text>
@@ -79,7 +80,5 @@ function Size({onNext}: SizeProps) {
         </FormProvider>
     );
 }
-
-Size.displayName = 'SizeStep';
 
 export default Size;

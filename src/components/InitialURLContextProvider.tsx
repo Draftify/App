@@ -1,18 +1,30 @@
-import React, {createContext, useEffect, useMemo, useState} from 'react';
+import React, {createContext, useContext, useEffect, useState} from 'react';
 import type {ReactNode} from 'react';
 import {Linking} from 'react-native';
 import type {Route} from '@src/ROUTES';
 
-type InitialUrlContextType = {
+type InitialUrlStateContextType = {
     initialURL: Route | null;
+    isAuthenticatedAtStartup: boolean;
+};
+
+type InitialUrlActionsContextType = {
     setInitialURL: React.Dispatch<React.SetStateAction<Route | null>>;
+    setIsAuthenticatedAtStartup: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
+const defaultInitialURLActionsContext: InitialUrlActionsContextType = {
+    setInitialURL: () => {},
+    setIsAuthenticatedAtStartup: () => {},
 };
 
 /** Initial url that will be opened when NewDot is embedded into Hybrid App. */
-const InitialURLContext = createContext<InitialUrlContextType>({
+const InitialURLStateContext = createContext<InitialUrlStateContextType>({
     initialURL: null,
-    setInitialURL: () => {},
+    isAuthenticatedAtStartup: false,
 });
+
+const InitialURLActionsContext = createContext<InitialUrlActionsContextType>(defaultInitialURLActionsContext);
 
 type InitialURLContextProviderProps = {
     /** Children passed to the context provider */
@@ -21,6 +33,7 @@ type InitialURLContextProviderProps = {
 
 function InitialURLContextProvider({children}: InitialURLContextProviderProps) {
     const [initialURL, setInitialURL] = useState<Route | null>(null);
+    const [isAuthenticatedAtStartup, setIsAuthenticatedAtStartup] = useState<boolean>(false);
 
     useEffect(() => {
         Linking.getInitialURL().then((initURL) => {
@@ -31,18 +44,35 @@ function InitialURLContextProvider({children}: InitialURLContextProviderProps) {
         });
     }, []);
 
-    const initialUrlContext = useMemo(
-        () => ({
-            initialURL,
-            setInitialURL,
-        }),
-        [initialURL],
-    );
+    // Because of the React Compiler we don't need to memoize it manually
+    // eslint-disable-next-line react/jsx-no-constructed-context-values
+    const stateContextValue = {
+        initialURL,
+        isAuthenticatedAtStartup,
+    };
 
-    return <InitialURLContext.Provider value={initialUrlContext}>{children}</InitialURLContext.Provider>;
+    // Because of the React Compiler we don't need to memoize it manually
+    // eslint-disable-next-line react/jsx-no-constructed-context-values
+    const actionsContextValue = {
+        setInitialURL,
+        setIsAuthenticatedAtStartup,
+    };
+
+    return (
+        <InitialURLActionsContext.Provider value={actionsContextValue}>
+            <InitialURLStateContext.Provider value={stateContextValue}>{children}</InitialURLStateContext.Provider>
+        </InitialURLActionsContext.Provider>
+    );
 }
 
-InitialURLContextProvider.displayName = 'InitialURLContextProvider';
-
 export default InitialURLContextProvider;
-export {InitialURLContext};
+
+function useInitialURLState() {
+    return useContext(InitialURLStateContext);
+}
+
+function useInitialURLActions() {
+    return useContext(InitialURLActionsContext);
+}
+
+export {useInitialURLState, useInitialURLActions};

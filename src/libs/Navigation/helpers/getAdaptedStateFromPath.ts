@@ -5,16 +5,19 @@ import type {OnyxCollection} from 'react-native-onyx';
 import Onyx from 'react-native-onyx';
 import getInitialSplitNavigatorState from '@libs/Navigation/AppNavigator/createSplitNavigator/getInitialSplitNavigatorState';
 import {config} from '@libs/Navigation/linkingConfig/config';
-import {RHP_TO_SEARCH, RHP_TO_SETTINGS, RHP_TO_SIDEBAR, RHP_TO_WORKSPACE} from '@libs/Navigation/linkingConfig/RELATIONS';
+import {RHP_TO_DOMAIN, RHP_TO_SEARCH, RHP_TO_SETTINGS, RHP_TO_SIDEBAR, RHP_TO_WORKSPACE, RHP_TO_WORKSPACES_LIST} from '@libs/Navigation/linkingConfig/RELATIONS';
 import type {NavigationPartialRoute, RootNavigatorParamList} from '@libs/Navigation/types';
 import CONST from '@src/CONST';
 import NAVIGATORS from '@src/NAVIGATORS';
 import ONYXKEYS from '@src/ONYXKEYS';
+import ROUTES from '@src/ROUTES';
 import SCREENS from '@src/SCREENS';
 import type {Report} from '@src/types/onyx';
 import getMatchingNewRoute from './getMatchingNewRoute';
 import getParamsFromRoute from './getParamsFromRoute';
-import {isFullScreenName} from './isNavigatorName';
+import getRedirectedPath from './getRedirectedPath';
+import {isFullScreenName, isPublicScreenName} from './isNavigatorName';
+import normalizePath from './normalizePath';
 import replacePathInNestedState from './replacePathInNestedState';
 
 let allReports: OnyxCollection<Report>;
@@ -39,6 +42,23 @@ function isRouteWithBackToParam(route: NavigationPartialRoute): route is Route<s
 
 function isRouteWithReportID(route: NavigationPartialRoute): route is Route<string, {reportID: string}> {
     return route.params !== undefined && 'reportID' in route.params && typeof route.params.reportID === 'string';
+}
+
+/**
+ * Get the appropriate screen name for RHP_TO_SEARCH lookup.
+ * Split tabs (amount, percentage, date) are nested routes within SPLIT_EXPENSE/SPLIT_EXPENSE_SEARCH.
+ * When a split tab route is accessed from search context (path contains '/search'),
+ * we use SPLIT_EXPENSE_SEARCH for the mapping lookup instead of the tab name.
+ */
+function getSearchScreenNameForRoute(route: NavigationPartialRoute): string {
+    const splitTabNames = Object.values(CONST.TAB.SPLIT) as string[];
+    const isSplitTabRoute = splitTabNames.includes(route.name);
+
+    if (isSplitTabRoute && route.path?.includes('/search')) {
+        return SCREENS.MONEY_REQUEST.SPLIT_EXPENSE_SEARCH;
+    }
+
+    return route.name;
 }
 
 function getMatchingFullScreenRoute(route: NavigationPartialRoute) {
@@ -67,11 +87,11 @@ function getMatchingFullScreenRoute(route: NavigationPartialRoute) {
         // If not, get the matching full screen route for the back to state.
         return getMatchingFullScreenRoute(focusedStateForBackToRoute);
     }
-
-    if (RHP_TO_SEARCH[route.name]) {
-        const paramsFromRoute = getParamsFromRoute(RHP_TO_SEARCH[route.name]);
+    const routeNameForLookup = getSearchScreenNameForRoute(route);
+    if (RHP_TO_SEARCH[routeNameForLookup]) {
+        const paramsFromRoute = getParamsFromRoute(RHP_TO_SEARCH[routeNameForLookup]);
         const searchRoute = {
-            name: RHP_TO_SEARCH[route.name],
+            name: RHP_TO_SEARCH[routeNameForLookup],
             params: paramsFromRoute.length > 0 ? pick(route.params, paramsFromRoute) : undefined,
         };
         return {
@@ -84,6 +104,15 @@ function getMatchingFullScreenRoute(route: NavigationPartialRoute) {
         return getInitialSplitNavigatorState({
             name: RHP_TO_SIDEBAR[route.name],
         });
+    }
+
+    if (RHP_TO_WORKSPACES_LIST[route.name]) {
+        return {
+            name: SCREENS.WORKSPACES_LIST,
+            // prepending a slash to ensure closing the RHP after refreshing the page
+            // replaces the whole path with "/workspaces", instead of just replacing the last url segment ("/x/y/workspaces")
+            path: normalizePath(ROUTES.WORKSPACES_LIST.route),
+        };
     }
 
     if (RHP_TO_WORKSPACE[route.name]) {
@@ -115,6 +144,21 @@ function getMatchingFullScreenRoute(route: NavigationPartialRoute) {
         );
     }
 
+    if (RHP_TO_DOMAIN[route.name]) {
+        const paramsFromRoute = getParamsFromRoute(RHP_TO_DOMAIN[route.name]);
+
+        return getInitialSplitNavigatorState(
+            {
+                name: SCREENS.DOMAIN.INITIAL,
+                params: paramsFromRoute.length > 0 ? pick(route.params, paramsFromRoute) : undefined,
+            },
+            {
+                name: RHP_TO_DOMAIN[route.name],
+                params: paramsFromRoute.length > 0 ? pick(route.params, paramsFromRoute) : undefined,
+            },
+        );
+    }
+
     return undefined;
 }
 
@@ -123,9 +167,10 @@ function getMatchingFullScreenRoute(route: NavigationPartialRoute) {
 // This is separated from getMatchingFullScreenRoute because we want to use it only for the initial state.
 // We don't want to make this route mandatory e.g. after deep linking or opening a specific flow.
 function getDefaultFullScreenRoute(route?: NavigationPartialRoute) {
+    // PublicScreens navigator doesn't have REPORTS_SPLIT_NAVIGATOR, so public screens need SCREENS.HOME as fallback
     // We will use it if the reportID is not defined. Router of this navigator has logic to fill it with a report.
     const fallbackRoute = {
-        name: NAVIGATORS.REPORTS_SPLIT_NAVIGATOR,
+        name: isPublicScreenName(route?.name) ? SCREENS.HOME : NAVIGATORS.REPORTS_SPLIT_NAVIGATOR,
     };
 
     if (route && isRouteWithReportID(route)) {
@@ -137,7 +182,7 @@ function getDefaultFullScreenRoute(route?: NavigationPartialRoute) {
 
         return getInitialSplitNavigatorState(
             {
-                name: SCREENS.HOME,
+                name: SCREENS.INBOX,
             },
             {
                 name: SCREENS.REPORT,
@@ -193,8 +238,6 @@ function getAdaptedState(state: PartialState<NavigationState<RootNavigatorParamL
             }
         }
 
-        const defaultFullScreenRoute = getDefaultFullScreenRoute(focusedRoute);
-
         // The onboarding flow consists of several screens. If we open any of the screens, the previous screens from that flow should be in the state.
         if (onboardingNavigator?.state) {
             const adaptedOnboardingNavigator = {
@@ -202,8 +245,10 @@ function getAdaptedState(state: PartialState<NavigationState<RootNavigatorParamL
                 state: getOnboardingAdaptedState(onboardingNavigator.state),
             };
 
-            return getRoutesWithIndex([defaultFullScreenRoute, adaptedOnboardingNavigator]);
+            return getRoutesWithIndex([{name: SCREENS.HOME}, adaptedOnboardingNavigator]);
         }
+
+        const defaultFullScreenRoute = getDefaultFullScreenRoute(focusedRoute);
 
         // If not, add the default full screen route.
         return getRoutesWithIndex([defaultFullScreenRoute, ...state.routes]);
@@ -226,7 +271,7 @@ function getAdaptedState(state: PartialState<NavigationState<RootNavigatorParamL
  */
 const getAdaptedStateFromPath: GetAdaptedStateFromPath = (path, options, shouldReplacePathInNestedState = true) => {
     let normalizedPath = !path.startsWith('/') ? `/${path}` : path;
-
+    normalizedPath = getRedirectedPath(normalizedPath);
     normalizedPath = getMatchingNewRoute(normalizedPath) ?? normalizedPath;
 
     // Bing search results still link to /signin when searching for “Expensify”, but the /signin route no longer exists in our repo, so we redirect it to the home page to avoid showing a Not Found page.

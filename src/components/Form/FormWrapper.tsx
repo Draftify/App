@@ -1,4 +1,4 @@
-import React, {useCallback, useMemo, useRef} from 'react';
+import React, {useRef} from 'react';
 import type {RefObject} from 'react';
 // eslint-disable-next-line no-restricted-imports
 import type {ScrollView as RNScrollView, StyleProp, ViewStyle} from 'react-native';
@@ -84,6 +84,7 @@ function FormWrapper({
     scrollContextEnabled = false,
     shouldHideFixErrorsAlert = false,
     disablePressOnEnter = false,
+    enterKeyEventListenerPriority = 1,
     isSubmitDisabled = false,
     shouldRenderFooterAboveSubmit = false,
     isLoading = false,
@@ -94,6 +95,7 @@ function FormWrapper({
     shouldSubmitButtonBlendOpacity = false,
     shouldPreventDefaultFocusOnPressSubmit = false,
     onScroll = () => {},
+    forwardedFSClass,
 }: FormWrapperProps) {
     const styles = useThemeStyles();
     const formRef = useRef<RNScrollView>(null);
@@ -101,11 +103,11 @@ function FormWrapper({
 
     const [formState] = useOnyx<OnyxFormKey, Form>(`${formID}`, {canBeMissing: true});
 
-    const errorMessage = useMemo(() => (formState ? getLatestErrorMessage(formState) : undefined), [formState]);
+    const errorMessage = formState ? getLatestErrorMessage(formState) : undefined;
 
-    const onFixTheErrorsLinkPressed = useCallback(() => {
+    const onFixTheErrorsLinkPressed = () => {
         const errorFields = !isEmptyObject(errors) ? errors : (formState?.errorFields ?? {});
-        const focusKey = Object.keys(inputRefs.current ?? {}).find((key) => Object.keys(errorFields).includes(key));
+        const focusKey = Object.keys(inputRefs.current ?? {}).find((key) => key in errorFields);
 
         if (!focusKey) {
             return;
@@ -132,7 +134,7 @@ function FormWrapper({
 
         // Focus the input after scrolling, as on the Web it gives a slightly better visual result
         focusInput?.focus?.();
-    }, [errors, formState?.errorFields, inputRefs]);
+    };
 
     // If either of `addBottomSafeAreaPadding` or `shouldSubmitButtonStickToBottom` is explicitly set,
     // we expect that the user wants to use the new edge-to-edge mode.
@@ -157,86 +159,53 @@ function FormWrapper({
         style: submitButtonStyles,
     });
 
-    const SubmitButton = useMemo(
-        () =>
-            isSubmitButtonVisible && (
-                <FormAlertWithSubmitButton
-                    buttonText={submitButtonText}
-                    isDisabled={isSubmitDisabled}
-                    isAlertVisible={((!isEmptyObject(errors) || !isEmptyObject(formState?.errorFields)) && !shouldHideFixErrorsAlert) || !!errorMessage}
-                    isLoading={!!formState?.isLoading || isLoading}
-                    message={isEmptyObject(formState?.errorFields) ? errorMessage : undefined}
-                    onSubmit={onSubmit}
-                    footerContent={footerContent}
-                    onFixTheErrorsLinkPressed={onFixTheErrorsLinkPressed}
-                    containerStyles={[
-                        styles.mh0,
-                        styles.mt5,
-                        submitFlexEnabled && styles.flex1,
-                        submitButtonStylesWithBottomSafeAreaPadding,
-                        shouldSubmitButtonStickToBottom && [styles.stickToBottom, style],
-                    ]}
-                    enabledWhenOffline={enabledWhenOffline}
-                    isSubmitActionDangerous={isSubmitActionDangerous}
-                    disablePressOnEnter={disablePressOnEnter}
-                    enterKeyEventListenerPriority={1}
-                    shouldRenderFooterAboveSubmit={shouldRenderFooterAboveSubmit}
-                    shouldBlendOpacity={shouldSubmitButtonBlendOpacity}
-                    shouldPreventDefaultFocusOnPress={shouldPreventDefaultFocusOnPressSubmit}
-                />
-            ),
-        [
-            disablePressOnEnter,
-            enabledWhenOffline,
-            errorMessage,
-            errors,
-            footerContent,
-            formState?.errorFields,
-            formState?.isLoading,
-            isLoading,
-            isSubmitActionDangerous,
-            isSubmitButtonVisible,
-            isSubmitDisabled,
-            onFixTheErrorsLinkPressed,
-            onSubmit,
-            shouldHideFixErrorsAlert,
-            shouldSubmitButtonBlendOpacity,
-            shouldSubmitButtonStickToBottom,
-            style,
-            styles.flex1,
-            styles.mh0,
-            styles.mt5,
-            styles.stickToBottom,
-            submitButtonStylesWithBottomSafeAreaPadding,
-            submitButtonText,
-            submitFlexEnabled,
-            shouldRenderFooterAboveSubmit,
-            shouldPreventDefaultFocusOnPressSubmit,
-        ],
+    const SubmitButton = isSubmitButtonVisible && (
+        <FormAlertWithSubmitButton
+            buttonText={submitButtonText}
+            isDisabled={isSubmitDisabled}
+            isAlertVisible={((!isEmptyObject(errors) || !isEmptyObject(formState?.errorFields)) && !shouldHideFixErrorsAlert) || !!errorMessage}
+            isLoading={!!formState?.isLoading || isLoading}
+            message={isEmptyObject(formState?.errorFields) ? errorMessage : undefined}
+            onSubmit={onSubmit}
+            footerContent={footerContent}
+            onFixTheErrorsLinkPressed={onFixTheErrorsLinkPressed}
+            containerStyles={[
+                styles.mh0,
+                styles.mt5,
+                submitFlexEnabled && styles.flex1,
+                submitButtonStylesWithBottomSafeAreaPadding,
+                shouldSubmitButtonStickToBottom && [styles.stickToBottom, style],
+            ]}
+            enabledWhenOffline={enabledWhenOffline}
+            isSubmitActionDangerous={isSubmitActionDangerous}
+            disablePressOnEnter={disablePressOnEnter}
+            enterKeyEventListenerPriority={enterKeyEventListenerPriority}
+            shouldRenderFooterAboveSubmit={shouldRenderFooterAboveSubmit}
+            shouldBlendOpacity={shouldSubmitButtonBlendOpacity}
+            shouldPreventDefaultFocusOnPress={shouldPreventDefaultFocusOnPressSubmit}
+        />
     );
 
-    const scrollViewContent = useCallback(
-        () => (
-            <FormElement
-                key={formID}
-                ref={formContentRef}
-                style={[style, styles.pb5]}
-                onLayout={() => {
-                    if (!shouldScrollToEnd) {
-                        return;
-                    }
-                    InteractionManager.runAfterInteractions(() => {
-                        requestAnimationFrame(() => {
-                            formRef.current?.scrollToEnd({animated: true});
-                        });
+    const scrollViewContent = () => (
+        <FormElement
+            key={formID}
+            ref={formContentRef}
+            style={[style, styles.pb5]}
+            onLayout={() => {
+                if (!shouldScrollToEnd) {
+                    return;
+                }
+                // eslint-disable-next-line @typescript-eslint/no-deprecated
+                InteractionManager.runAfterInteractions(() => {
+                    requestAnimationFrame(() => {
+                        formRef.current?.scrollToEnd({animated: true});
                     });
-                }}
-            >
-                {children}
-                {!shouldSubmitButtonStickToBottom && SubmitButton}
-            </FormElement>
-        ),
-        [formID, style, styles.pb5, children, shouldSubmitButtonStickToBottom, SubmitButton, shouldScrollToEnd],
+                });
+            }}
+        >
+            {children}
+            {!shouldSubmitButtonStickToBottom && SubmitButton}
+        </FormElement>
     );
 
     if (!shouldUseScrollView) {
@@ -253,7 +222,10 @@ function FormWrapper({
     }
 
     return (
-        <View style={styles.flex1}>
+        <View
+            style={styles.flex1}
+            fsClass={forwardedFSClass}
+        >
             {scrollContextEnabled ? (
                 <ScrollViewWithContext
                     style={[styles.w100, styles.flex1]}
@@ -282,7 +254,5 @@ function FormWrapper({
         </View>
     );
 }
-
-FormWrapper.displayName = 'FormWrapper';
 
 export default FormWrapper;

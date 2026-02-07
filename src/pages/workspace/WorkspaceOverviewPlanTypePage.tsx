@@ -6,22 +6,22 @@ import Button from '@components/Button';
 import FullScreenLoadingIndicator from '@components/FullscreenLoadingIndicator';
 import HeaderWithBackButton from '@components/HeaderWithBackButton';
 import Icon from '@components/Icon';
-import * as Expensicons from '@components/Icon/Expensicons';
 import ScreenWrapper from '@components/ScreenWrapper';
 import SelectionList from '@components/SelectionList';
-import RadioListItem from '@components/SelectionList/RadioListItem';
+import RadioListItem from '@components/SelectionList/ListItem/RadioListItem';
 import Text from '@components/Text';
 import TextLink from '@components/TextLink';
+import {useMemoizedLazyExpensifyIcons} from '@hooks/useLazyAsset';
 import useLocalize from '@hooks/useLocalize';
-import useOnyx from '@hooks/useOnyx';
+import usePrivateSubscription from '@hooks/usePrivateSubscription';
 import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
 import OpenWorkspacePlanPage from '@libs/actions/Policy/Plan';
+import {isSubscriptionTypeOfInvoicing} from '@libs/SubscriptionUtils';
 import Navigation from '@navigation/Navigation';
 import CardSectionUtils from '@pages/settings/Subscription/CardSection/utils';
 import type {PersonalPolicyTypeExcludedProps} from '@pages/settings/Subscription/SubscriptionPlan/SubscriptionPlanCard';
 import CONST from '@src/CONST';
-import ONYXKEYS from '@src/ONYXKEYS';
 import ROUTES from '@src/ROUTES';
 import AccessOrNotFoundWrapper from './AccessOrNotFoundWrapper';
 import withPolicy from './withPolicy';
@@ -40,7 +40,8 @@ function WorkspaceOverviewPlanTypePage({policy}: WithPolicyProps) {
     const {translate} = useLocalize();
     const theme = useTheme();
     const styles = useThemeStyles();
-    const [privateSubscription] = useOnyx(ONYXKEYS.NVP_PRIVATE_SUBSCRIPTION);
+    const privateSubscription = usePrivateSubscription();
+    const expensifyIcons = useMemoizedLazyExpensifyIcons(['Lock']);
 
     useEffect(() => {
         if (!policyID) {
@@ -74,7 +75,7 @@ function WorkspaceOverviewPlanTypePage({policy}: WithPolicyProps) {
     const lockedIcon = (option: WorkspacePlanTypeItem) =>
         option.value === policy?.type ? (
             <Icon
-                src={Expensicons.Lock}
+                src={expensifyIcons.Lock}
                 fill={theme.success}
             />
         ) : null;
@@ -86,6 +87,10 @@ function WorkspaceOverviewPlanTypePage({policy}: WithPolicyProps) {
         }
 
         if (policyID && policy?.type === CONST.POLICY.TYPE.CORPORATE && currentPlan === CONST.POLICY.TYPE.TEAM) {
+            if (isSubscriptionTypeOfInvoicing(privateSubscription?.type)) {
+                Navigation.navigate(ROUTES.SETTINGS_SUBSCRIPTION_DOWNGRADE_BLOCKED.getRoute(Navigation.getActiveRoute()));
+                return;
+            }
             Navigation.navigate(ROUTES.WORKSPACE_DOWNGRADE.getRoute(policyID));
             return;
         }
@@ -101,7 +106,7 @@ function WorkspaceOverviewPlanTypePage({policy}: WithPolicyProps) {
             accessVariants={[CONST.POLICY.ACCESS_VARIANTS.ADMIN]}
         >
             <ScreenWrapper
-                testID={WorkspaceOverviewPlanTypePage.displayName}
+                testID="WorkspaceOverviewPlanTypePage"
                 shouldShowOfflineIndicatorInWideScreen
                 enableEdgeToEdgeBottomSafeAreaPadding
             >
@@ -130,8 +135,8 @@ function WorkspaceOverviewPlanTypePage({policy}: WithPolicyProps) {
                             </Text>
                         )}
                         <SelectionList
-                            shouldIgnoreFocus
-                            sections={[{data: workspacePlanTypes, isDisabled: isPlanTypeLocked}]}
+                            data={workspacePlanTypes}
+                            isDisabled={isPlanTypeLocked}
                             ListItem={RadioListItem}
                             onSelectRow={(option) => {
                                 setCurrentPlan(option.value);
@@ -139,7 +144,8 @@ function WorkspaceOverviewPlanTypePage({policy}: WithPolicyProps) {
                             rightHandSideComponent={isPlanTypeLocked ? lockedIcon : null}
                             shouldUpdateFocusedIndex
                             shouldSingleExecuteRowSelect
-                            initiallyFocusedOptionKey={workspacePlanTypes.find((mode) => mode.isSelected)?.keyForList}
+                            shouldIgnoreFocus
+                            initiallyFocusedItemKey={workspacePlanTypes.find((mode) => mode.isSelected)?.keyForList}
                             addBottomSafeAreaPadding
                             footerContent={
                                 <Button
@@ -157,7 +163,5 @@ function WorkspaceOverviewPlanTypePage({policy}: WithPolicyProps) {
         </AccessOrNotFoundWrapper>
     );
 }
-
-WorkspaceOverviewPlanTypePage.displayName = 'WorkspaceOverviewPlanTypePage';
 
 export default withPolicy(WorkspaceOverviewPlanTypePage);

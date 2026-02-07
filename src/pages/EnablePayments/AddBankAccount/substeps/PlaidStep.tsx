@@ -17,14 +17,12 @@ function PlaidStep({onNext}: SubStepProps) {
     const {translate} = useLocalize();
     const styles = useThemeStyles();
     const isFocused = useIsFocused();
-    const [personalBankAccountDraft] = useOnyx(ONYXKEYS.FORMS.PERSONAL_BANK_ACCOUNT_FORM_DRAFT);
-    const [plaidData] = useOnyx(ONYXKEYS.PLAID_DATA);
+    const [personalBankAccountDraft] = useOnyx(ONYXKEYS.FORMS.PERSONAL_BANK_ACCOUNT_FORM_DRAFT, {canBeMissing: true});
+    const [plaidData] = useOnyx(ONYXKEYS.PLAID_DATA, {canBeMissing: true});
     const selectedPlaidAccountID = personalBankAccountDraft?.[BANK_INFO_STEP_KEYS.PLAID_ACCOUNT_ID] ?? '';
 
     const handleNextPress = useCallback(() => {
-        const selectedPlaidBankAccount = (plaidData?.bankAccounts ?? []).find(
-            (account) => account.plaidAccountID === personalBankAccountDraft?.[BANK_INFO_STEP_KEYS.PLAID_ACCOUNT_ID] ?? null,
-        );
+        const selectedPlaidBankAccount = (plaidData?.bankAccounts ?? []).find((account) => account.plaidAccountID === personalBankAccountDraft?.[BANK_INFO_STEP_KEYS.PLAID_ACCOUNT_ID]);
 
         const bankAccountData = {
             [BANK_INFO_STEP_KEYS.ROUTING_NUMBER]: selectedPlaidBankAccount?.[BANK_INFO_STEP_KEYS.ROUTING_NUMBER],
@@ -50,7 +48,7 @@ function PlaidStep({onNext}: SubStepProps) {
             return;
         }
         clearPersonalBankAccountSetupType();
-    }, [isFocused, plaidData]);
+    }, [isFocused, plaidData?.bankAccounts]);
 
     return (
         <FormProvider
@@ -78,7 +76,5 @@ function PlaidStep({onNext}: SubStepProps) {
         </FormProvider>
     );
 }
-
-PlaidStep.displayName = 'PlaidStep';
 
 export default PlaidStep;

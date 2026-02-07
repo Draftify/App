@@ -1,16 +1,17 @@
 import React, {useCallback} from 'react';
 import {View} from 'react-native';
-import type {SortOrder, TableColumnSize} from '@components/Search/types';
-import SortableTableHeader from '@components/SelectionList/SortableTableHeader';
-import type {SortableColumnName} from '@components/SelectionList/types';
+import type {SearchColumnType, SortOrder, TableColumnSize} from '@components/Search/types';
+import SortableTableHeader from '@components/SelectionListWithSections/SortableTableHeader';
+import type {SortableColumnName} from '@components/SelectionListWithSections/types';
 import useThemeStyles from '@hooks/useThemeStyles';
 import CONST from '@src/CONST';
 import type {TranslationPaths} from '@src/languages/types';
 
 type ColumnConfig = {
-    columnName: SortableColumnName;
+    columnName: SearchColumnType;
     translationKey: TranslationPaths | undefined;
     isColumnSortable?: boolean;
+    canBeMissing?: boolean;
 };
 
 const columnConfig: ColumnConfig[] = [
@@ -31,27 +32,44 @@ const columnConfig: ColumnConfig[] = [
     {
         columnName: CONST.SEARCH.TABLE_COLUMNS.MERCHANT,
         translationKey: 'common.merchant',
+        canBeMissing: true,
     },
     {
         columnName: CONST.SEARCH.TABLE_COLUMNS.DESCRIPTION,
         translationKey: 'common.description',
+        canBeMissing: true,
+        isColumnSortable: true,
     },
     {
         columnName: CONST.SEARCH.TABLE_COLUMNS.CATEGORY,
         translationKey: 'common.category',
+        canBeMissing: true,
     },
     {
         columnName: CONST.SEARCH.TABLE_COLUMNS.TAG,
         translationKey: 'common.tag',
+        canBeMissing: true,
     },
     {
-        columnName: CONST.REPORT.TRANSACTION_LIST.COLUMNS.COMMENTS,
+        columnName: CONST.SEARCH.TABLE_COLUMNS.REIMBURSABLE,
+        translationKey: 'common.reimbursable',
+        canBeMissing: true,
+        isColumnSortable: false,
+    },
+    {
+        columnName: CONST.SEARCH.TABLE_COLUMNS.BILLABLE,
+        translationKey: 'common.billable',
+        canBeMissing: true,
+        isColumnSortable: false,
+    },
+    {
+        columnName: CONST.SEARCH.TABLE_COLUMNS.COMMENTS,
         translationKey: undefined, // comments have no title displayed
         isColumnSortable: false,
     },
     {
         columnName: CONST.SEARCH.TABLE_COLUMNS.TOTAL_AMOUNT,
-        translationKey: 'common.total',
+        translationKey: 'iou.amount',
     },
 ];
 
@@ -63,14 +81,13 @@ type SearchTableHeaderProps = {
     amountColumnSize: TableColumnSize;
     taxAmountColumnSize: TableColumnSize;
     shouldShowSorting: boolean;
-    columns: SortableColumnName[];
+    columns: SearchColumnType[];
 };
-
-function MoneyRequestReportTableHeader({sortBy, sortOrder, onSortPress, dateColumnSize, shouldShowSorting, amountColumnSize, taxAmountColumnSize, columns}: SearchTableHeaderProps) {
+function MoneyRequestReportTableHeader({sortBy, sortOrder, onSortPress, dateColumnSize, shouldShowSorting, columns, amountColumnSize, taxAmountColumnSize}: SearchTableHeaderProps) {
     const styles = useThemeStyles();
 
     const shouldShowColumn = useCallback(
-        (columnName: SortableColumnName) => {
+        (columnName: SearchColumnType) => {
             return columns.includes(columnName);
         },
         [columns],
@@ -92,7 +109,5 @@ function MoneyRequestReportTableHeader({sortBy, sortOrder, onSortPress, dateColu
         </View>
     );
 }
-
-MoneyRequestReportTableHeader.displayName = 'MoneyRequestReportTableHeader';
 
 export default MoneyRequestReportTableHeader;

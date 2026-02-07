@@ -1,11 +1,14 @@
 import type {MarkdownRange, MarkdownStyle} from '@expensify/react-native-live-markdown';
+import type {NavigationProp, NavigationState} from '@react-navigation/native';
+import type {ForwardedRef} from 'react';
 import type {GestureResponderEvent, StyleProp, TextInputProps, TextStyle, ViewStyle} from 'react-native';
 import type {MaskedTextInputOwnProps} from 'react-native-advanced-input-mask/lib/typescript/src/types';
 import type {AnimatedTextInputRef} from '@components/RNTextInput';
+import type {ForwardedFSClassProps} from '@libs/Fullstory/types';
 import type IconAsset from '@src/types/utils/IconAsset';
 
 type InputType = 'markdown' | 'mask' | 'default';
-type CustomBaseTextInputProps = {
+type CustomBaseTextInputProps = ForwardedFSClassProps & {
     /** Input label */
     label?: string;
 
@@ -29,6 +32,9 @@ type CustomBaseTextInputProps = {
 
     /** Icon to display in left side of text input */
     iconLeft?: IconAsset | null;
+
+    /** Whether to include padding to the icon container */
+    includeIconPadding?: boolean;
 
     /** Customize the TextInput container */
     textInputContainerStyles?: StyleProp<ViewStyle>;
@@ -189,6 +195,17 @@ type CustomBaseTextInputProps = {
 
     /** Whether the input prefix should use the default `Text` line height fallback. Disable this if you intentionally want the prefix to have `lineHeight: undefined` */
     shouldUseDefaultLineHeightForPrefix?: boolean;
+
+    /** Reference to the outer element */
+    ref?: ForwardedRef<BaseTextInputRef>;
+
+    /** When the `disableKeyboard` prop is passed with the value `true`, we need to pass the `navigation` prop from `useNavigation` to ensure that the `disableKeyboard` functionality works correctly when the application is in the background */
+    navigation?: Omit<NavigationProp<ReactNavigation.RootParamList>, 'getState'> & {
+        getState(): NavigationState | undefined;
+    };
+
+    /** Label for Sentry tracking */
+    sentryLabel?: string;
 };
 
 type BaseTextInputRef = HTMLFormElement | AnimatedTextInputRef;

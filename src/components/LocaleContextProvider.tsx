@@ -1,16 +1,24 @@
+import {format as formatDate} from 'date-fns';
 import React, {createContext, useEffect, useMemo, useState} from 'react';
+import {importEmojiLocale} from '@assets/emojis';
 import useCurrentUserPersonalDetails from '@hooks/useCurrentUserPersonalDetails';
 import useOnyx from '@hooks/useOnyx';
 import DateUtils from '@libs/DateUtils';
+import {buildEmojisTrie} from '@libs/EmojiTrie';
 import {fromLocaleDigit as fromLocaleDigitLocaleDigitUtils, toLocaleDigit as toLocaleDigitLocaleDigitUtils, toLocaleOrdinal as toLocaleOrdinalLocaleDigitUtils} from '@libs/LocaleDigitUtils';
 import {formatPhoneNumberWithCountryCode} from '@libs/LocalePhoneNumber';
-import {translate as translateLocalize} from '@libs/Localize';
+import {getDevicePreferredLocale, translate as translateLocalize} from '@libs/Localize';
 import {format} from '@libs/NumberFormatUtils';
+import {endSpan, getSpan, startSpan} from '@libs/telemetry/activeSpans';
+import {setLocale} from '@userActions/App';
+import CONST from '@src/CONST';
+import {isFullySupportedLocale, isSupportedLocale} from '@src/CONST/LOCALES';
 import IntlStore from '@src/languages/IntlStore';
 import type {TranslationParameters, TranslationPaths} from '@src/languages/types';
 import ONYXKEYS from '@src/ONYXKEYS';
 import type Locale from '@src/types/onyx/Locale';
 import type {SelectedTimezone} from '@src/types/onyx/PersonalDetails';
+import isLoadingOnyxValue from '@src/types/utils/isLoadingOnyxValue';
 
 type LocaleContextProviderProps = {
     /** Actual content wrapped by this component */
@@ -49,9 +57,14 @@ type LocaleContextProps = {
     /** This is a wrapper around the localeCompare function that uses the preferred locale from the user's settings. */
     localeCompare: (a: string, b: string) => number;
 
+    /** Formats travel dates using transport date formatting (no timezone conversion, matches Trip Summary) */
+    formatTravelDate: (datetime: string) => string;
+
     /** The user's preferred locale e.g. 'en', 'es' */
     preferredLocale: Locale | undefined;
 };
+
+type LocalizedTranslate = LocaleContextProps['translate'];
 
 const LocaleContext = createContext<LocaleContextProps>({
     translate: () => '',
@@ -64,6 +77,7 @@ const LocaleContext = createContext<LocaleContextProps>({
     toLocaleOrdinal: () => '',
     fromLocaleDigit: () => '',
     localeCompare: () => 0,
+    formatTravelDate: () => '',
     preferredLocale: undefined,
 });
 
@@ -73,7 +87,45 @@ function LocaleContextProvider({children}: LocaleContextProviderProps) {
     const currentUserPersonalDetails = useCurrentUserPersonalDetails();
     const [areTranslationsLoading = true] = useOnyx(ONYXKEYS.ARE_TRANSLATIONS_LOADING, {initWithStoredValues: false, canBeMissing: true});
     const [countryCodeByIP = 1] = useOnyx(ONYXKEYS.COUNTRY_CODE, {canBeMissing: true});
+    const [nvpPreferredLocale, nvpPreferredLocaleMetadata] = useOnyx(ONYXKEYS.NVP_PREFERRED_LOCALE, {canBeMissing: true});
     const [currentLocale, setCurrentLocale] = useState<Locale | undefined>(() => IntlStore.getCurrentLocale());
+
+    const localeToApply = useMemo(() => {
+        if (isLoadingOnyxValue(nvpPreferredLocaleMetadata)) {
+            return undefined;
+        }
+
+        if (nvpPreferredLocale && isSupportedLocale(nvpPreferredLocale)) {
+            return nvpPreferredLocale;
+        }
+
+        const deviceLocale = getDevicePreferredLocale();
+        return isSupportedLocale(deviceLocale) ? deviceLocale : CONST.LOCALES.DEFAULT;
+    }, [nvpPreferredLocale, nvpPreferredLocaleMetadata]);
+
+    useEffect(() => {
+        if (!localeToApply) {
+            return;
+        }
+
+        IntlStore.load(localeToApply);
+        setLocale(localeToApply, nvpPreferredLocale);
+
+        // For locales without emoji support, fallback on English
+        const normalizedLocale = isFullySupportedLocale(localeToApply) ? localeToApply : CONST.LOCALES.DEFAULT;
+
+        startSpan(CONST.TELEMETRY.SPAN_LOCALE.EMOJI_IMPORT, {
+            name: CONST.TELEMETRY.SPAN_LOCALE.EMOJI_IMPORT,
+            op: CONST.TELEMETRY.SPAN_LOCALE.EMOJI_IMPORT,
+            parentSpan: getSpan(CONST.TELEMETRY.SPAN_LOCALE.ROOT),
+        });
+
+        importEmojiLocale(normalizedLocale).then(() => {
+            endSpan(CONST.TELEMETRY.SPAN_LOCALE.EMOJI_IMPORT);
+
+            buildEmojisTrie(normalizedLocale);
+        });
+    }, [localeToApply, nvpPreferredLocale]);
 
     useEffect(() => {
         if (areTranslationsLoading) {
@@ -88,7 +140,7 @@ function LocaleContextProvider({children}: LocaleContextProviderProps) {
         setCurrentLocale(locale);
     }, [areTranslationsLoading]);
 
-    const selectedTimezone = useMemo(() => currentUserPersonalDetails?.timezone?.selected, [currentUserPersonalDetails]);
+    const selectedTimezone = useMemo(() => currentUserPersonalDetails?.timezone?.selected, [currentUserPersonalDetails?.timezone?.selected]);
 
     const collator = useMemo(() => new Intl.Collator(currentLocale, COLLATOR_OPTIONS), [currentLocale]);
 
@@ -102,16 +154,20 @@ function LocaleContextProvider({children}: LocaleContextProviderProps) {
     const numberFormat = useMemo<LocaleContextProps['numberFormat']>(() => (number, options) => format(currentLocale, number, options), [currentLocale]);
 
     const getLocalDateFromDatetime = useMemo<LocaleContextProps['getLocalDateFromDatetime']>(
-        () => (datetime, currentSelectedTimezone) => DateUtils.getLocalDateFromDatetime(currentLocale, datetime, currentSelectedTimezone ?? selectedTimezone),
+        () => (datetime, currentSelectedTimezone) =>
+            DateUtils.getLocalDateFromDatetime(currentLocale, currentSelectedTimezone ?? selectedTimezone ?? CONST.DEFAULT_TIME_ZONE.selected, datetime),
         [currentLocale, selectedTimezone],
     );
 
-    const datetimeToRelative = useMemo<LocaleContextProps['datetimeToRelative']>(() => (datetime) => DateUtils.datetimeToRelative(currentLocale, datetime), [currentLocale]);
+    const datetimeToRelative = useMemo<LocaleContextProps['datetimeToRelative']>(
+        () => (datetime) => DateUtils.datetimeToRelative(currentLocale, datetime, selectedTimezone ?? CONST.DEFAULT_TIME_ZONE.selected),
+        [currentLocale, selectedTimezone],
+    );
 
     const datetimeToCalendarTime = useMemo<LocaleContextProps['datetimeToCalendarTime']>(
         () =>
             (datetime, includeTimezone, isLowercase = false) =>
-                DateUtils.datetimeToCalendarTime(currentLocale, datetime, includeTimezone, selectedTimezone, isLowercase),
+                DateUtils.datetimeToCalendarTime(currentLocale, datetime, selectedTimezone ?? CONST.DEFAULT_TIME_ZONE.selected, includeTimezone, isLowercase),
         [currentLocale, selectedTimezone],
     );
 
@@ -130,6 +186,17 @@ function LocaleContextProvider({children}: LocaleContextProviderProps) {
 
     const localeCompare = useMemo<LocaleContextProps['localeCompare']>(() => (a, b) => collator.compare(a, b), [collator]);
 
+    const formatTravelDate = useMemo<LocaleContextProps['formatTravelDate']>(
+        () => (datetime) => {
+            const date = new Date(datetime);
+            const formattedDate = formatDate(date, CONST.DATE.MONTH_DAY_YEAR_ABBR_FORMAT);
+            const formattedHour = formatDate(date, CONST.DATE.LOCAL_TIME_FORMAT);
+            const at = translateLocalize(currentLocale, 'common.conjunctionAt');
+            return `${formattedDate} ${at} ${formattedHour}`;
+        },
+        [currentLocale],
+    );
+
     const contextValue = useMemo<LocaleContextProps>(
         () => ({
             translate,
@@ -142,6 +209,7 @@ function LocaleContextProvider({children}: LocaleContextProviderProps) {
             toLocaleOrdinal,
             fromLocaleDigit,
             localeCompare,
+            formatTravelDate,
             preferredLocale: currentLocale,
         }),
         [
@@ -155,6 +223,7 @@ function LocaleContextProvider({children}: LocaleContextProviderProps) {
             toLocaleOrdinal,
             fromLocaleDigit,
             localeCompare,
+            formatTravelDate,
             currentLocale,
         ],
     );
@@ -162,8 +231,6 @@ function LocaleContextProvider({children}: LocaleContextProviderProps) {
     return <LocaleContext.Provider value={contextValue}>{children}</LocaleContext.Provider>;
 }
 
-LocaleContextProvider.displayName = 'LocaleContextProvider';
-
 export {LocaleContext, LocaleContextProvider};
 
-export type {Locale, LocaleContextProps};
+export type {Locale, LocaleContextProps, LocalizedTranslate};

@@ -3,7 +3,7 @@ import type {OnyxEntry} from 'react-native-onyx';
 import FullScreenLoadingIndicator from '@components/FullscreenLoadingIndicator';
 import HeaderWithBackButton from '@components/HeaderWithBackButton';
 import ScreenWrapper from '@components/ScreenWrapper';
-import useHandleBackButton from '@hooks/useHandleBackButton';
+import useAndroidBackButtonHandler from '@hooks/useAndroidBackButtonHandler';
 import useLocalize from '@hooks/useLocalize';
 import useRootNavigationState from '@hooks/useRootNavigationState';
 import useSubStep from '@hooks/useSubStep';
@@ -69,7 +69,7 @@ function InternationalDepositAccountContent({privatePersonalDetails, corpayField
 
     const skippedSteps = getSkippedSteps(skipAccountTypeStep, skipAccountHolderInformationStep);
 
-    const topmostFullScreenRoute = useRootNavigationState((state) => state.routes.findLast((route) => isFullScreenName(route.name)));
+    const topmostFullScreenRoute = useRootNavigationState((state) => state?.routes.findLast((route) => isFullScreenName(route.name)));
 
     const goBack = useCallback(() => {
         switch (topmostFullScreenRoute?.name) {
@@ -123,7 +123,7 @@ function InternationalDepositAccountContent({privatePersonalDetails, corpayField
         return true;
     };
 
-    useHandleBackButton(handleBackButtonPress);
+    useAndroidBackButtonHandler(handleBackButtonPress);
 
     const handleNextScreen = useCallback(() => {
         if (isEditing) {
@@ -140,7 +140,8 @@ function InternationalDepositAccountContent({privatePersonalDetails, corpayField
     return (
         <ScreenWrapper
             shouldEnableMaxHeight
-            testID={InternationalDepositAccountContent.displayName}
+            testID="InternationalDepositAccountContent"
+            shouldShowOfflineIndicatorInWideScreen={screenIndex === CONST.CORPAY_FIELDS.INDEXES.MAPPING.CONFIRMATION}
         >
             <HeaderWithBackButton
                 title={translate('bankAccount.addBankAccount')}
@@ -158,7 +159,5 @@ function InternationalDepositAccountContent({privatePersonalDetails, corpayField
         </ScreenWrapper>
     );
 }
-
-InternationalDepositAccountContent.displayName = 'InternationalDepositAccountContent';
 
 export default InternationalDepositAccountContent;

@@ -35,13 +35,17 @@ import {
 // Therefore, SaveResponseInOnyx.js can't import and use this file directly.
 
 let lastUpdateIDAppliedToClient: number = CONST.DEFAULT_NUMBER_ID;
-Onyx.connect({
+// `lastUpdateIDAppliedToClient` is not dependent on any changes on the UI,
+// so it is okay to use `connectWithoutView` here.
+Onyx.connectWithoutView({
     key: ONYXKEYS.ONYX_UPDATES_LAST_UPDATE_ID_APPLIED_TO_CLIENT,
     callback: (value) => (lastUpdateIDAppliedToClient = value ?? CONST.DEFAULT_NUMBER_ID),
 });
 
 let isLoadingApp = false;
-Onyx.connect({
+// `isLoadingApp` is not dependent on any changes on the UI,
+// so it is okay to use `connectWithoutView` here.
+Onyx.connectWithoutView({
     key: ONYXKEYS.IS_LOADING_APP,
     callback: (value) => {
         isLoadingApp = value ?? false;
@@ -200,29 +204,37 @@ function handleMissingOnyxUpdates(onyxUpdatesFromServer: OnyxEntry<OnyxUpdatesFr
 function updateAuthTokenIfNecessary(onyxUpdatesFromServer: OnyxEntry<OnyxUpdatesFromServer>): void {
     // Consolidate all of the given Onyx updates
     const onyxUpdates: OnyxUpdate[] = [];
-    onyxUpdatesFromServer?.updates?.forEach((updateEvent) => onyxUpdates.push(...updateEvent.data));
+    if (onyxUpdatesFromServer?.updates) {
+        for (const updateEvent of onyxUpdatesFromServer.updates) {
+            onyxUpdates.push(...updateEvent.data);
+        }
+    }
     onyxUpdates.push(...(onyxUpdatesFromServer?.response?.onyxData ?? []));
 
     // Find any session updates
     const sessionUpdates = onyxUpdates?.filter((onyxUpdate) => onyxUpdate.key === ONYXKEYS.SESSION);
 
     // If any of the updates changes the authToken, let's update it now
-    sessionUpdates?.forEach((sessionUpdate) => {
-        const session = (sessionUpdate.value ?? {}) as Session;
-        const newAuthToken = session.authToken ?? '';
-        if (!newAuthToken) {
-            return;
-        }
+    if (sessionUpdates) {
+        for (const sessionUpdate of sessionUpdates) {
+            const session = (sessionUpdate.value ?? {}) as Session;
+            const newAuthToken = session.authToken ?? '';
+            if (!newAuthToken) {
+                continue;
+            }
 
-        Log.info('[OnyxUpdateManager] Found an authToken update while handling an Onyx update gap. Updating the authToken.');
-        updateSessionAuthTokens(newAuthToken);
-        setAuthToken(newAuthToken);
-    });
+            Log.info('[OnyxUpdateManager] Found an authToken update while handling an Onyx update gap. Updating the authToken.');
+            updateSessionAuthTokens(newAuthToken);
+            setAuthToken(newAuthToken);
+        }
+    }
 }
 
 export default () => {
     console.debug('[OnyxUpdateManager] Listening for updates from the server');
-    Onyx.connect({
+    // `Onyx updates` are not dependent on any changes on the UI,
+    // so it is okay to use `connectWithoutView` here.
+    Onyx.connectWithoutView({
         key: ONYXKEYS.ONYX_UPDATES_FROM_SERVER,
         callback: (value) => {
             handleMissingOnyxUpdates(value);

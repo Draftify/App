@@ -39,13 +39,14 @@ function SearchFiltersTagPage() {
         const uniqueTagNames = new Set<string>();
 
         if (!selectedPoliciesTagLists || selectedPoliciesTagLists.length === 0) {
-            const tagListsUnpacked = Object.values(allPolicyTagLists ?? {}).filter((item) => !!item) as PolicyTagLists[];
-            tagListsUnpacked
-                .map(getTagNamesFromTagsLists)
-                .flat()
-                .forEach((tag) => uniqueTagNames.add(tag));
+            const tagListsUnpacked = Object.values(allPolicyTagLists ?? {}).filter((item) => !!item);
+            for (const tag of tagListsUnpacked.map(getTagNamesFromTagsLists).flat()) {
+                uniqueTagNames.add(tag);
+            }
         } else {
-            selectedPoliciesTagLists.forEach((tag) => uniqueTagNames.add(tag));
+            for (const tag of selectedPoliciesTagLists) {
+                uniqueTagNames.add(tag);
+            }
         }
         items.push(...Array.from(uniqueTagNames).map((tagName) => ({name: getCleanedTagName(tagName), value: tagName})));
 
@@ -56,7 +57,7 @@ function SearchFiltersTagPage() {
 
     return (
         <ScreenWrapper
-            testID={SearchFiltersTagPage.displayName}
+            testID="SearchFiltersTagPage"
             shouldShowOfflineIndicatorInWideScreen
             offlineIndicatorStyle={styles.mtAuto}
             shouldEnableMaxHeight
@@ -64,7 +65,7 @@ function SearchFiltersTagPage() {
             <HeaderWithBackButton
                 title={translate('common.tag')}
                 onBackButtonPress={() => {
-                    Navigation.goBack(ROUTES.SEARCH_ADVANCED_FILTERS);
+                    Navigation.goBack(ROUTES.SEARCH_ADVANCED_FILTERS.getRoute());
                 }}
             />
             <View style={[styles.flex1]}>
@@ -77,7 +78,5 @@ function SearchFiltersTagPage() {
         </ScreenWrapper>
     );
 }
-
-SearchFiltersTagPage.displayName = 'SearchFiltersTagPage';
 
 export default SearchFiltersTagPage;

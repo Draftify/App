@@ -12,7 +12,7 @@ type EnablePaymentsRoute = typeof ROUTES.ENABLE_PAYMENTS | typeof ROUTES.IOU_SEN
 
 type SettlementButtonProps = {
     /** Callback to execute when this button is pressed. Receives a single payment type argument. */
-    onPress: (paymentType?: PaymentMethodType, payAsBusiness?: boolean, methodID?: number, paymentMethod?: PaymentMethod) => void;
+    onPress: (paymentType: PaymentMethodType | undefined, payAsBusiness?: boolean, methodID?: number, paymentMethod?: PaymentMethod | undefined, policyID?: string) => void;
 
     /** Callback when the payment options popover is shown */
     onPaymentOptionsShow?: () => void;
@@ -62,11 +62,17 @@ type SettlementButtonProps = {
     /** The size of button size */
     buttonSize?: ButtonSizeValue;
 
+    /** Render button in extra-small size */
+    extraSmall?: boolean;
+
     /** Route for the Add Debit Card screen for a given navigation stack */
     addDebitCardRoute?: Route;
 
     /** Whether the button should be disabled */
     isDisabled?: boolean;
+
+    /** Whether the button should stay visually normal even when disabled. */
+    shouldStayNormalOnDisable?: boolean;
 
     /** Whether we should show a loading state for the main button */
     isLoading?: boolean;
@@ -91,6 +97,15 @@ type SettlementButtonProps = {
 
     /** Whether we only show pay elsewhere button */
     onlyShowPayElsewhere?: boolean;
+
+    /** Whether to use short form for the button */
+    shouldUseShortForm?: boolean;
+
+    /** Whether we the report has only held expenses */
+    hasOnlyHeldExpenses?: boolean;
+
+    /** Label for Sentry tracking */
+    sentryLabel?: string;
 };
 
 export default SettlementButtonProps;

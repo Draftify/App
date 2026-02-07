@@ -1,15 +1,14 @@
 import React, {useEffect, useRef} from 'react';
 import type {View} from 'react-native';
-import type {ValueOf} from 'type-fest';
 import {getButtonRole} from '@components/Button/utils';
 import OfflineWithFeedback from '@components/OfflineWithFeedback';
 import {PressableWithFeedback} from '@components/Pressable';
-import type {TableColumnSize} from '@components/Search/types';
-import type {SortableColumnName} from '@components/SelectionList/types';
+import type {SearchColumnType, TableColumnSize} from '@components/Search/types';
 import TransactionItemRow from '@components/TransactionItemRow';
 import useAnimatedHighlightStyle from '@hooks/useAnimatedHighlightStyle';
 import useLocalize from '@hooks/useLocalize';
 import useResponsiveLayout from '@hooks/useResponsiveLayout';
+import useResponsiveLayoutOnWideRHP from '@hooks/useResponsiveLayoutOnWideRHP';
 import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
 import ControlSelection from '@libs/ControlSelection';
@@ -17,11 +16,18 @@ import canUseTouchScreen from '@libs/DeviceCapabilities/canUseTouchScreen';
 import {getTransactionPendingAction, isTransactionPendingDelete} from '@libs/TransactionUtils';
 import variables from '@styles/variables';
 import CONST from '@src/CONST';
+import type {Report, TransactionViolation} from '@src/types/onyx';
 import type {TransactionWithOptionalHighlight} from './MoneyRequestReportTransactionList';
 
 type MoneyRequestReportTransactionItemProps = {
     /** The transaction that is being displayed */
     transaction: TransactionWithOptionalHighlight;
+
+    /** Transaction violations */
+    violations?: TransactionViolation[];
+
+    /** Report to which the transaction belongs */
+    report: Report;
 
     /** Whether the mobile selection mode is enabled */
     isSelectionModeEnabled: boolean;
@@ -48,29 +54,36 @@ type MoneyRequestReportTransactionItemProps = {
     taxAmountColumnSize: TableColumnSize;
 
     /** Columns to show */
-    columns: SortableColumnName[];
+    columns: SearchColumnType[];
 
     /** Callback function that scrolls to this transaction in case it is newly added */
     scrollToNewTransaction?: (offset: number) => void;
+
+    /** Callback function that navigates to the transaction thread */
+    onArrowRightPress?: (transactionID: string) => void;
 };
 
 function MoneyRequestReportTransactionItem({
     transaction,
-    columns,
+    violations,
+    report,
     isSelectionModeEnabled,
     toggleTransaction,
     isSelected,
     handleOnPress,
     handleLongPress,
+    columns,
     dateColumnSize,
     amountColumnSize,
     taxAmountColumnSize,
     scrollToNewTransaction,
+    onArrowRightPress,
 }: MoneyRequestReportTransactionItemProps) {
     const {translate} = useLocalize();
     const styles = useThemeStyles();
     // eslint-disable-next-line rulesdir/prefer-shouldUseNarrowLayout-instead-of-isSmallScreenWidth
-    const {isSmallScreenWidth, isMediumScreenWidth, shouldUseNarrowLayout} = useResponsiveLayout();
+    const {isSmallScreenWidth, isMediumScreenWidth} = useResponsiveLayout();
+    const {shouldUseNarrowLayout} = useResponsiveLayoutOnWideRHP();
     const theme = useTheme();
     const isPendingDelete = isTransactionPendingDelete(transaction);
     const pendingAction = getTransactionPendingAction(transaction);
@@ -117,24 +130,32 @@ function MoneyRequestReportTransactionItem({
                 ref={viewRef}
                 wrapperStyle={[animatedHighlightStyle, styles.userSelectNone]}
             >
-                <TransactionItemRow
-                    transactionItem={transaction}
-                    isSelected={isSelected}
-                    dateColumnSize={dateColumnSize}
-                    amountColumnSize={amountColumnSize}
-                    taxAmountColumnSize={taxAmountColumnSize}
-                    shouldShowTooltip
-                    shouldUseNarrowLayout={shouldUseNarrowLayout || isMediumScreenWidth}
-                    shouldShowCheckbox={!!isSelectionModeEnabled || !isSmallScreenWidth}
-                    onCheckboxPress={toggleTransaction}
-                    columns={columns as Array<ValueOf<typeof CONST.REPORT.TRANSACTION_LIST.COLUMNS>>}
-                    isDisabled={isPendingDelete}
-                />
+                {({hovered}) => (
+                    <TransactionItemRow
+                        transactionItem={transaction}
+                        violations={violations}
+                        report={report}
+                        isSelected={isSelected}
+                        dateColumnSize={dateColumnSize}
+                        amountColumnSize={amountColumnSize}
+                        taxAmountColumnSize={taxAmountColumnSize}
+                        shouldShowTooltip
+                        shouldUseNarrowLayout={shouldUseNarrowLayout || isMediumScreenWidth}
+                        shouldShowCheckbox={!!isSelectionModeEnabled || !isSmallScreenWidth}
+                        onCheckboxPress={toggleTransaction}
+                        columns={columns}
+                        isDisabled={isPendingDelete}
+                        style={[styles.p3]}
+                        onButtonPress={() => {
+                            handleOnPress(transaction.transactionID);
+                        }}
+                        onArrowRightPress={() => onArrowRightPress?.(transaction.transactionID)}
+                        isHover={hovered}
+                    />
+                )}
             </PressableWithFeedback>
         </OfflineWithFeedback>
     );
 }
-
-MoneyRequestReportTransactionItem.displayName = 'MoneyRequestReportTransactionItem';
 
 export default MoneyRequestReportTransactionItem;

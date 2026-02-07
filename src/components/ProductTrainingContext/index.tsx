@@ -1,18 +1,20 @@
-import React, {createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState} from 'react';
+import {isActingAsDelegateSelector} from '@selectors/Account';
+import {hasCompletedGuidedSetupFlowSelector} from '@selectors/Onboarding';
+import {emailSelector} from '@selectors/Session';
+import React, {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import {View} from 'react-native';
 import Button from '@components/Button';
 import Icon from '@components/Icon';
 import * as Expensicons from '@components/Icon/Expensicons';
 import PressableWithoutFeedback from '@components/Pressable/PressableWithoutFeedback';
 import RenderHTML from '@components/RenderHTML';
+import {useMemoizedLazyExpensifyIcons} from '@hooks/useLazyAsset';
 import useLocalize from '@hooks/useLocalize';
 import useOnyx from '@hooks/useOnyx';
 import useResponsiveLayout from '@hooks/useResponsiveLayout';
 import useSidePanel from '@hooks/useSidePanel';
 import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
-import {parseFSAttributes} from '@libs/Fullstory';
-import {hasCompletedGuidedSetupFlowSelector} from '@libs/onboardingSelectors';
 import {getActiveAdminWorkspaces, getActiveEmployeeWorkspaces, getGroupPaidPoliciesWithExpenseChatEnabled} from '@libs/PolicyUtils';
 import isProductTrainingElementDismissed from '@libs/TooltipUtils';
 import variables from '@styles/variables';
@@ -58,8 +60,8 @@ function ProductTrainingContextProvider({children}: ChildrenProps) {
     });
 
     const [allPolicies, allPoliciesMetadata] = useOnyx(ONYXKEYS.COLLECTION.POLICY, {canBeMissing: true});
-    const [currentUserLogin, currentUserLoginMetadata] = useOnyx(ONYXKEYS.SESSION, {selector: (session) => session?.email, canBeMissing: true});
-    const [isActingAsDelegate] = useOnyx(ONYXKEYS.ACCOUNT, {selector: (account) => !!account?.delegatedAccess?.delegate, canBeMissing: true});
+    const [currentUserLogin, currentUserLoginMetadata] = useOnyx(ONYXKEYS.SESSION, {selector: emailSelector, canBeMissing: true});
+    const [isActingAsDelegate] = useOnyx(ONYXKEYS.ACCOUNT, {selector: isActingAsDelegateSelector, canBeMissing: true});
 
     const isUserPolicyEmployee = useMemo(() => {
         if (!allPolicies || !currentUserLogin || isLoadingOnyxValue(allPoliciesMetadata, currentUserLoginMetadata)) {
@@ -151,6 +153,7 @@ function ProductTrainingContextProvider({children}: ChildrenProps) {
                 tooltipName !== CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.SCAN_TEST_TOOLTIP_MANAGER &&
                 tooltipName !== CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.SCAN_TEST_CONFIRMATION &&
                 tooltipName !== CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.SCAN_TEST_DRIVE_CONFIRMATION &&
+                tooltipName !== CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.GPS_TOOLTIP &&
                 isModalVisible
             ) {
                 return false;
@@ -230,6 +233,7 @@ const useProductTrainingContext = (tooltipName: ProductTrainingTooltipName, shou
     const theme = useTheme();
     const {shouldHideToolTip} = useSidePanel();
     const {translate} = useLocalize();
+    const expensifyIcons = useMemoizedLazyExpensifyIcons(['Lightbulb']);
 
     if (!context) {
         throw new Error('useProductTourContext must be used within a ProductTourProvider');
@@ -246,14 +250,6 @@ const useProductTrainingContext = (tooltipName: ProductTrainingTooltipName, shou
             unregisterTooltip(tooltipName);
         };
     }, [tooltipName, registerTooltip, unregisterTooltip, shouldShow]);
-
-    /**
-     * Extracts values from the non-scraped attribute WEB_PROP_ATTR at build time
-     * to ensure necessary properties are available for further processing.
-     * Reevaluates "fs-class" to dynamically apply styles or behavior based on
-     * updated attribute values.
-     */
-    useLayoutEffect(parseFSAttributes, []);
 
     const shouldShowProductTrainingTooltip = useMemo(() => {
         return shouldShow && shouldRenderTooltip(tooltipName) && !shouldHideToolTip;
@@ -274,10 +270,7 @@ const useProductTrainingContext = (tooltipName: ProductTrainingTooltipName, shou
     const renderProductTrainingTooltip = useCallback(() => {
         const tooltip = TOOLTIPS[tooltipName];
         return (
-            <View
-                fsClass={CONST.FULL_STORY.UNMASK}
-                testID={CONST.FULL_STORY.UNMASK}
-            >
+            <View fsClass={CONST.FULLSTORY.CLASS.UNMASK}>
                 <View
                     style={[
                         styles.alignItemsCenter,
@@ -290,7 +283,7 @@ const useProductTrainingContext = (tooltipName: ProductTrainingTooltipName, shou
                     ]}
                 >
                     <Icon
-                        src={Expensicons.Lightbulb}
+                        src={expensifyIcons.Lightbulb}
                         fill={theme.tooltipHighlightText}
                         medium
                     />
@@ -300,7 +293,7 @@ const useProductTrainingContext = (tooltipName: ProductTrainingTooltipName, shou
                     {!tooltip?.shouldRenderActionButtons && (
                         <PressableWithoutFeedback
                             shouldUseAutoHitSlop
-                            accessibilityLabel={translate('productTrainingTooltip.scanTestTooltip.noThanks')}
+                            accessibilityLabel={translate('common.noThanks')}
                             role={CONST.ROLE.BUTTON}
                             // eslint-disable-next-line react/jsx-props-no-spreading
                             {...createPressHandler(() => hideTooltip(true))}
@@ -324,7 +317,7 @@ const useProductTrainingContext = (tooltipName: ProductTrainingTooltipName, shou
                             {...createPressHandler(config.onConfirm)}
                         />
                         <Button
-                            text={translate('productTrainingTooltip.scanTestTooltip.noThanks')}
+                            text={translate('common.noThanks')}
                             style={[styles.flex1]}
                             // eslint-disable-next-line react/jsx-props-no-spreading
                             {...createPressHandler(config.onDismiss)}
@@ -355,6 +348,7 @@ const useProductTrainingContext = (tooltipName: ProductTrainingTooltipName, shou
         config.onConfirm,
         config.onDismiss,
         hideTooltip,
+        expensifyIcons.Lightbulb,
     ]);
 
     const hideProductTrainingTooltip = useCallback(() => {

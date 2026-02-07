@@ -3,6 +3,7 @@ import {View} from 'react-native';
 import {Rect} from 'react-native-svg';
 import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
+import useSkeletonSpan from '@libs/telemetry/useSkeletonSpan';
 import variables from '@styles/variables';
 import SkeletonViewContentLoader from './SkeletonViewContentLoader';
 
@@ -13,54 +14,48 @@ type TransactionPreviewSkeletonViewProps = {
 function TransactionPreviewSkeletonView({transactionPreviewWidth}: TransactionPreviewSkeletonViewProps) {
     const theme = useTheme();
     const styles = useThemeStyles();
+    useSkeletonSpan('TransactionPreviewSkeletonView');
 
-    const isWidthANumber = typeof transactionPreviewWidth === 'number';
-    const width = isWidthANumber ? transactionPreviewWidth - styles.p4.padding * 2 : transactionPreviewWidth;
     const height = variables.transactionPreviewSkeletonHeight;
+    const widthOfTheLeftSkeleton = 120;
+    const widthOfTheRightSkeleton = 68;
 
     return (
-        <View style={[styles.p4, styles.mtn1]}>
+        <View style={[styles.p4, styles.mtn1, styles.justifyContentBetween, {width: transactionPreviewWidth}]}>
             <SkeletonViewContentLoader
-                testID={TransactionPreviewSkeletonView.displayName}
+                testID="TransactionPreviewSkeletonView"
                 animate
-                width={width}
+                width={widthOfTheLeftSkeleton}
                 height={height}
                 backgroundColor={theme.skeletonLHNIn}
                 foregroundColor={theme.skeletonLHNOut}
             >
                 <Rect
-                    x="0"
-                    y="4"
+                    transform={[{translateY: 4}]}
                     width="64"
                     height="8"
                 />
                 <Rect
-                    x="0"
-                    y="24"
-                    width="120"
+                    transform={[{translateY: 24}]}
+                    width={widthOfTheLeftSkeleton}
                     height="20"
                 />
                 <Rect
-                    x="0"
-                    y="54.75"
+                    transform={[{translateY: 54.75}]}
                     width="80"
                     height="7"
                 />
             </SkeletonViewContentLoader>
-            {/* This skeleton inverts the progress bar, which should be on the right,
-            so we don't need to know the width of the component to calculate it - works with percentages.
-           */}
-            <View style={[styles.r0, styles.b0, styles.p4, styles.mtn1, styles.pAbsolute, styles.mirror]}>
+            <View style={[styles.r0, styles.b0, styles.p4, styles.mtn1, styles.pAbsolute]}>
                 <SkeletonViewContentLoader
-                    width={width}
+                    width={widthOfTheRightSkeleton}
                     height={height}
                     foregroundColor={theme.skeletonLHNOut}
                     backgroundColor={theme.skeletonLHNIn}
                 >
                     <Rect
-                        x="0"
-                        y="24"
-                        width="68"
+                        transform={[{translateY: 24}]}
+                        width={widthOfTheRightSkeleton}
                         height="20"
                     />
                 </SkeletonViewContentLoader>
@@ -69,5 +64,4 @@ function TransactionPreviewSkeletonView({transactionPreviewWidth}: TransactionPr
     );
 }
 
-TransactionPreviewSkeletonView.displayName = 'TransactionPreviewSkeletonView';
 export default TransactionPreviewSkeletonView;

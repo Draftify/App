@@ -9,10 +9,11 @@ jobs:
   updateChecklist:
     if: github.event.label.name == 'DeployBlockerCash'
     uses: ./.github/workflows/createDeployChecklist.yml
+    secrets: inherit
 
   deployBlocker:
     if: github.event.label.name == 'DeployBlockerCash'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Checkout
         # v4

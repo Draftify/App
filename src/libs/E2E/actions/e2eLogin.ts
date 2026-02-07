@@ -1,5 +1,4 @@
 /* eslint-disable rulesdir/prefer-actions-set-data */
-
 /* eslint-disable rulesdir/prefer-onyx-connect-in-libs */
 import Onyx from 'react-native-onyx';
 import {Authenticate} from '@libs/Authentication';
@@ -25,7 +24,8 @@ const e2eUserCredentials = {
 export default function (): Promise<boolean> {
     const waitForBeginSignInToFinish = (): Promise<void> =>
         new Promise((resolve) => {
-            const id = Onyx.connect({
+            // We opted for `connectWithoutView` here as this is being used for mocking data for E2E flow.
+            const id = Onyx.connectWithoutView({
                 key: ONYXKEYS.CREDENTIALS,
                 callback: (credentials) => {
                     // beginSignUp writes to credentials.login once the API call is complete
@@ -43,7 +43,8 @@ export default function (): Promise<boolean> {
 
     // Subscribe to auth token, to check if we are authenticated
     return new Promise((resolve, reject) => {
-        const connection = Onyx.connect({
+        // We opted for `connectWithoutView` here as this is being used for mocking data for E2E flow.
+        const connection = Onyx.connectWithoutView({
             key: ONYXKEYS.SESSION,
             callback: (session) => {
                 if (session?.authToken == null || session.authToken.length === 0) {

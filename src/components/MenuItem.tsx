@@ -1,46 +1,48 @@
 import type {ImageContentFit} from 'expo-image';
 import type {ReactElement, ReactNode, Ref} from 'react';
-import React, {forwardRef, useContext, useMemo, useRef} from 'react';
-import type {GestureResponderEvent, StyleProp, TextStyle, ViewStyle} from 'react-native';
-import {ActivityIndicator, View} from 'react-native';
+import React, {useContext, useMemo, useRef} from 'react';
+import type {GestureResponderEvent, Role, StyleProp, TextStyle, ViewStyle} from 'react-native';
+import {View} from 'react-native';
 import type {ValueOf} from 'type-fest';
+import {useMemoizedLazyExpensifyIcons} from '@hooks/useLazyAsset';
 import useResponsiveLayout from '@hooks/useResponsiveLayout';
 import useStyleUtils from '@hooks/useStyleUtils';
 import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
 import ControlSelection from '@libs/ControlSelection';
 import convertToLTR from '@libs/convertToLTR';
-import {canUseTouchScreen} from '@libs/DeviceCapabilities';
+import {canUseTouchScreen, hasHoverSupport} from '@libs/DeviceCapabilities';
 import {containsCustomEmoji, containsOnlyCustomEmoji} from '@libs/EmojiUtils';
+import type {ForwardedFSClassProps} from '@libs/Fullstory/types';
 import getButtonState from '@libs/getButtonState';
 import mergeRefs from '@libs/mergeRefs';
 import Parser from '@libs/Parser';
-import type {AvatarSource} from '@libs/UserUtils';
-import TextWithEmojiFragment from '@pages/home/report/comment/TextWithEmojiFragment';
-import {showContextMenu} from '@pages/home/report/ContextMenu/ReportActionContextMenu';
+import type {AvatarSource} from '@libs/UserAvatarUtils';
+import TextWithEmojiFragment from '@pages/inbox/report/comment/TextWithEmojiFragment';
+import {showContextMenu} from '@pages/inbox/report/ContextMenu/ReportActionContextMenu';
 import variables from '@styles/variables';
 import {callFunctionIfActionIsAllowed} from '@userActions/Session';
 import CONST from '@src/CONST';
 import type {Icon as IconType} from '@src/types/onyx/OnyxCommon';
 import type {TooltipAnchorAlignment} from '@src/types/utils/AnchorAlignment';
 import type IconAsset from '@src/types/utils/IconAsset';
+import type WithSentryLabel from '@src/types/utils/SentryLabel';
+import ActivityIndicator from './ActivityIndicator';
 import Avatar from './Avatar';
 import Badge from './Badge';
+import CopyTextToClipboard from './CopyTextToClipboard';
 import DisplayNames from './DisplayNames';
 import type {DisplayNameWithTooltip} from './DisplayNames/types';
 import FormHelpMessage from './FormHelpMessage';
 import Hoverable from './Hoverable';
 import Icon from './Icon';
-import * as Expensicons from './Icon/Expensicons';
-import * as defaultWorkspaceAvatars from './Icon/WorkspaceDefaultAvatars';
 import {MenuItemGroupContext} from './MenuItemGroup';
-import MultipleAvatars from './MultipleAvatars';
 import PlaidCardFeedIcon from './PlaidCardFeedIcon';
 import type {PressableRef} from './Pressable/GenericPressable/types';
 import PressableWithSecondaryInteraction from './PressableWithSecondaryInteraction';
 import RenderHTML from './RenderHTML';
+import ReportActionAvatars from './ReportActionAvatars';
 import SelectCircle from './SelectCircle';
-import SubscriptAvatar from './SubscriptAvatar';
 import Text from './Text';
 import EducationalTooltip from './Tooltip/EducationalTooltip';
 
@@ -55,7 +57,7 @@ type IconProps = {
 type AvatarProps = {
     iconType?: typeof CONST.ICON_TYPE_AVATAR | typeof CONST.ICON_TYPE_WORKSPACE | typeof CONST.ICON_TYPE_PLAID;
 
-    icon: AvatarSource | IconType[];
+    icon?: AvatarSource | IconType[];
 };
 
 type NoIcon = {
@@ -64,324 +66,367 @@ type NoIcon = {
     icon?: undefined;
 };
 
-type MenuItemBaseProps = {
-    /* View ref  */
-    /* eslint-disable-next-line react/no-unused-prop-types */
-    ref?: Ref<View>;
+type MenuItemBaseProps = ForwardedFSClassProps &
+    WithSentryLabel & {
+        /** Reference to the outer element */
+        ref?: PressableRef | Ref<View>;
 
-    /** Function to fire when component is pressed */
-    onPress?: (event: GestureResponderEvent | KeyboardEvent) => void | Promise<void>;
+        /** Function to fire when component is pressed */
+        onPress?: (event: GestureResponderEvent | KeyboardEvent) => void | Promise<void>;
 
-    /** Whether the menu item should be interactive at all */
-    interactive?: boolean;
+        /** Whether the menu item should be interactive at all */
+        interactive?: boolean;
 
-    /** Text to be shown as badge near the right end. */
-    badgeText?: string;
+        /** Text to be shown as badge near the right end. */
+        badgeText?: string;
 
-    /** Used to apply offline styles to child text components */
-    style?: StyleProp<ViewStyle>;
+        /** Icon to display on the left side of the badge */
+        badgeIcon?: IconAsset;
 
-    /** Outer wrapper styles */
-    outerWrapperStyle?: StyleProp<ViewStyle>;
+        /** Whether the badge should be shown as success */
+        badgeSuccess?: boolean;
 
-    /** Any additional styles to apply */
-    wrapperStyle?: StyleProp<ViewStyle>;
+        /** Callback to fire when the badge is pressed */
+        onBadgePress?: (event?: GestureResponderEvent | KeyboardEvent) => void;
 
-    /** Styles to apply on the title wrapper */
-    titleWrapperStyle?: StyleProp<ViewStyle>;
+        /** Used to apply offline styles to child text components */
+        style?: StyleProp<ViewStyle>;
 
-    /** Any additional styles to apply on the outer element */
-    containerStyle?: StyleProp<ViewStyle>;
+        /** Outer wrapper styles */
+        outerWrapperStyle?: StyleProp<ViewStyle>;
 
-    /** Used to apply styles specifically to the title */
-    titleStyle?: ViewStyle;
+        /** Any additional styles to apply */
+        wrapperStyle?: StyleProp<ViewStyle>;
 
-    /** Any additional styles to apply on the badge element */
-    badgeStyle?: ViewStyle;
+        /** Styles to apply on the title wrapper */
+        titleWrapperStyle?: StyleProp<ViewStyle>;
 
-    /** Any additional styles to apply to the label */
-    labelStyle?: StyleProp<ViewStyle>;
+        /** Any additional styles to apply on the outer element */
+        containerStyle?: StyleProp<ViewStyle>;
 
-    /** Additional styles to style the description text below the title */
-    descriptionTextStyle?: StyleProp<TextStyle>;
+        /** Used to apply styles specifically to the title */
+        titleStyle?: StyleProp<TextStyle>;
 
-    /** The fill color to pass into the icon. */
-    iconFill?: string;
+        /** Any additional styles to apply on the badge element */
+        badgeStyle?: ViewStyle;
 
-    /** Secondary icon to display on the left side of component, right of the icon */
-    secondaryIcon?: IconAsset;
+        /** Any additional styles to apply to the label */
+        labelStyle?: StyleProp<ViewStyle>;
 
-    /** The fill color to pass into the secondary icon. */
-    secondaryIconFill?: string;
+        /** Additional styles to style the description text below the title */
+        descriptionTextStyle?: StyleProp<TextStyle>;
 
-    /** Whether the secondary icon should have hover style */
-    isSecondaryIconHoverable?: boolean;
+        /** The fill color to pass into the icon. */
+        iconFill?: string | ((isHovered: boolean) => string);
 
-    /** Icon Width */
-    iconWidth?: number;
+        /** Secondary icon to display on the left side of component, right of the icon */
+        secondaryIcon?: IconAsset;
 
-    /** Icon Height */
-    iconHeight?: number;
+        /** The fill color to pass into the secondary icon. */
+        secondaryIconFill?: string;
 
-    /** Any additional styles to pass to the icon container. */
-    iconStyles?: StyleProp<ViewStyle>;
+        /** Whether the secondary icon should have hover style */
+        isSecondaryIconHoverable?: boolean;
 
-    /** Additional styles to pass to the icon itself */
-    additionalIconStyles?: StyleProp<ViewStyle>;
+        /** Icon Width */
+        iconWidth?: number;
 
-    /** A fallback avatar icon to display when there is an error on loading avatar from remote URL. */
-    fallbackIcon?: IconAsset;
+        /** Icon Height */
+        iconHeight?: number;
 
-    /** An icon to display under the main item */
-    furtherDetailsIcon?: IconAsset;
+        /** Any additional styles to pass to the icon container. */
+        iconStyles?: StyleProp<ViewStyle>;
 
-    /** Boolean whether to display the title right icon */
-    shouldShowTitleIcon?: boolean;
+        /** Additional styles to pass to the icon itself */
+        additionalIconStyles?: StyleProp<ViewStyle>;
 
-    /** Icon to display at right side of title */
-    titleIcon?: IconAsset;
+        /** A fallback avatar icon to display when there is an error on loading avatar from remote URL. */
+        fallbackIcon?: IconAsset;
 
-    /** Boolean whether to display the right icon */
-    shouldShowRightIcon?: boolean;
+        /** An icon to display under the main item */
+        furtherDetailsIcon?: IconAsset;
 
-    /** Overrides the icon for shouldShowRightIcon */
-    iconRight?: IconAsset;
+        /** Boolean whether to display the title right icon */
+        shouldShowTitleIcon?: boolean;
 
-    /** Should render component on the right */
-    shouldShowRightComponent?: boolean;
+        /** Icon to display at right side of title */
+        titleIcon?: IconAsset;
 
-    /** Component to be displayed on the right */
-    rightComponent?: ReactNode;
+        /** Boolean whether to display the right icon */
+        shouldShowRightIcon?: boolean;
 
-    /** A description text to show under the title */
-    description?: string;
+        /** Overrides the icon for shouldShowRightIcon */
+        iconRight?: IconAsset;
 
-    /** Text to show below menu item. This text is not interactive */
-    helperText?: string;
+        /** Should render component on the right */
+        shouldShowRightComponent?: boolean;
 
-    /** Any additional styles to pass to helper text. */
-    helperTextStyle?: StyleProp<TextStyle>;
+        /** Component to be displayed on the right */
+        rightComponent?: ReactNode;
 
-    /** Should the description be shown above the title (instead of the other way around) */
-    shouldShowDescriptionOnTop?: boolean;
+        /** Component to be displayed on the left */
+        leftComponent?: ReactNode;
 
-    /** Error to display at the bottom of the component */
-    errorText?: string | ReactNode;
+        /** A description text to show under the title */
+        description?: string;
 
-    /** Any additional styles to pass to error text. */
-    errorTextStyle?: StyleProp<ViewStyle>;
+        /** Text to show below menu item. This text is not interactive */
+        helperText?: string;
 
-    /** Hint to display at the bottom of the component */
-    hintText?: string | ReactNode;
+        /** Any additional styles to pass to helper text. */
+        helperTextStyle?: StyleProp<TextStyle>;
 
-    /** Should the error text red dot indicator be shown */
-    shouldShowRedDotIndicator?: boolean;
+        /** Should the description be shown above the title (instead of the other way around) */
+        shouldShowDescriptionOnTop?: boolean;
 
-    /** A boolean flag that gives the icon a green fill if true */
-    success?: boolean;
+        /** Error to display at the bottom of the component */
+        errorText?: string | ReactNode;
 
-    /** Whether item is focused or active */
-    focused?: boolean;
+        /** Any additional styles to pass to error text. */
+        errorTextStyle?: StyleProp<ViewStyle>;
 
-    /** Should we disable this menu item? */
-    disabled?: boolean;
+        /** Hint to display at the bottom of the component */
+        hintText?: string | ReactNode;
 
-    /** Text that appears above the title */
-    label?: string;
+        /** Should the error text red dot indicator be shown */
+        shouldShowRedDotIndicator?: boolean;
 
-    /** Character limit after which the menu item text will be truncated */
-    characterLimit?: number;
+        /** A boolean flag that gives the icon a green fill if true */
+        success?: boolean;
 
-    isLabelHoverable?: boolean;
+        /** Whether item is focused or active */
+        focused?: boolean;
 
-    /** Label to be displayed on the right */
-    rightLabel?: string;
+        /** Should we disable this menu item? */
+        disabled?: boolean;
 
-    /** Text to display for the item */
-    title?: string;
+        /** Text that appears above the title */
+        label?: string;
 
-    /** Component to display as the title */
-    titleComponent?: ReactElement;
+        /** Character limit after which the menu item text will be truncated */
+        characterLimit?: number;
 
-    /** Any additional styles to apply to the container for title components */
-    titleContainerStyle?: StyleProp<ViewStyle>;
+        isLabelHoverable?: boolean;
 
-    /** A right-aligned subtitle for this menu option */
-    subtitle?: string | number;
+        /** Label to be displayed on the right */
+        rightLabel?: string;
 
-    /** Should the title show with normal font weight (not bold) */
-    shouldShowBasicTitle?: boolean;
+        /** Text to display for the item */
+        title?: string;
 
-    /** Should we make this selectable with a checkbox */
-    shouldShowSelectedState?: boolean;
+        /** Accessibility label for the menu item */
+        accessibilityLabel?: string;
 
-    /** Should we truncate the title */
-    shouldTruncateTitle?: boolean;
+        /** Component to display as the title */
+        titleComponent?: ReactElement;
 
-    /** Whether this item is selected */
-    isSelected?: boolean;
+        /** Any additional styles to apply to the container for title components */
+        titleContainerStyle?: StyleProp<ViewStyle>;
 
-    /** Prop to identify if we should load avatars vertically instead of diagonally */
-    shouldStackHorizontally?: boolean;
+        /** A right-aligned subtitle for this menu option */
+        subtitle?: string | number;
 
-    /** Prop to represent the size of the avatar images to be shown */
-    avatarSize?: ValueOf<typeof CONST.AVATAR_SIZE>;
+        /** Should the title show with normal font weight (not bold) */
+        shouldShowBasicTitle?: boolean;
 
-    /** Avatars to show on the right of the menu item */
-    floatRightAvatars?: IconType[];
+        /** Should we make this selectable with a checkbox */
+        shouldShowSelectedState?: boolean;
 
-    /** Prop to represent the size of the float right avatar images to be shown */
-    floatRightAvatarSize?: ValueOf<typeof CONST.AVATAR_SIZE>;
+        /** Should we truncate the title */
+        shouldTruncateTitle?: boolean;
 
-    /** Whether the secondary right avatar should show as a subscript */
-    shouldShowSubscriptRightAvatar?: boolean;
+        /** Whether this item is selected */
+        isSelected?: boolean;
 
-    /** Whether the secondary avatar should show as a subscript */
-    shouldShowSubscriptAvatar?: boolean;
+        /** Prop to identify if we should load avatars vertically instead of diagonally */
+        shouldStackHorizontally?: boolean;
 
-    /** Affects avatar size  */
-    viewMode?: ValueOf<typeof CONST.OPTION_MODE>;
+        /** Prop to represent the size of the avatar images to be shown */
+        avatarSize?: ValueOf<typeof CONST.AVATAR_SIZE>;
 
-    /** Used to truncate the text with an ellipsis after computing the text layout */
-    numberOfLinesTitle?: number;
+        /** Affects avatar size  */
+        viewMode?: ValueOf<typeof CONST.OPTION_MODE>;
 
-    /** Used to truncate the description with an ellipsis after computing the text layout */
-    numberOfLinesDescription?: number;
+        /** Used to truncate the text with an ellipsis after computing the text layout */
+        numberOfLinesTitle?: number;
 
-    /**  Whether we should use small avatar subscript sizing the for menu item */
-    isSmallAvatarSubscriptMenu?: boolean;
+        /** Used to truncate the description with an ellipsis after computing the text layout */
+        numberOfLinesDescription?: number;
 
-    /** The type of brick road indicator to show. */
-    brickRoadIndicator?: ValueOf<typeof CONST.BRICK_ROAD_INDICATOR_STATUS>;
+        /**  Whether we should use small avatar subscript sizing the for menu item */
+        isSmallAvatarSubscriptMenu?: boolean;
 
-    /** Should render the content in HTML format */
-    shouldRenderAsHTML?: boolean;
+        /** The type of brick road indicator to show. */
+        brickRoadIndicator?: ValueOf<typeof CONST.BRICK_ROAD_INDICATOR_STATUS>;
 
-    /** Whether or not the text should be escaped */
-    shouldEscapeText?: boolean;
+        /** Should render the content in HTML format */
+        shouldRenderAsHTML?: boolean;
 
-    /** Should we grey out the menu item when it is disabled? */
-    shouldGreyOutWhenDisabled?: boolean;
+        /** Whether or not the text should be escaped */
+        shouldEscapeText?: boolean;
 
-    /** Should we remove the background color of the menu item */
-    shouldRemoveBackground?: boolean;
+        /** Should we grey out the menu item when it is disabled? */
+        shouldGreyOutWhenDisabled?: boolean;
 
-    /** Should we remove the hover background color of the menu item */
-    shouldRemoveHoverBackground?: boolean;
+        /** Should we remove the background color of the menu item */
+        shouldRemoveBackground?: boolean;
 
-    /** Should we use default cursor for disabled content */
-    shouldUseDefaultCursorWhenDisabled?: boolean;
+        /** Should we remove the hover background color of the menu item */
+        shouldRemoveHoverBackground?: boolean;
 
-    /** The action accept for anonymous user or not */
-    isAnonymousAction?: boolean;
+        rightIconAccountID?: number | string;
 
-    /** Flag to indicate whether or not text selection should be disabled from long-pressing the menu item. */
-    shouldBlockSelection?: boolean;
+        iconAccountID?: number;
 
-    /** Whether should render title as HTML or as Text */
-    shouldParseTitle?: boolean;
+        /** Should we use default cursor for disabled content */
+        shouldUseDefaultCursorWhenDisabled?: boolean;
 
-    /** Whether should render helper text as HTML or as Text */
-    shouldParseHelperText?: boolean;
+        /** The action accept for anonymous user or not */
+        isAnonymousAction?: boolean;
 
-    /** Whether should render hint text as HTML or as Text */
-    shouldRenderHintAsHTML?: boolean;
+        /** Flag to indicate whether or not text selection should be disabled from long-pressing the menu item. */
+        shouldBlockSelection?: boolean;
 
-    /** Whether should render error text as HTML or as Text */
-    shouldRenderErrorAsHTML?: boolean;
+        /** Whether should render title as HTML or as Text */
+        shouldParseTitle?: boolean;
 
-    /** List of markdown rules that will be ignored */
-    excludedMarkdownRules?: string[];
+        /** Whether should render helper text as HTML or as Text */
+        shouldParseHelperText?: boolean;
 
-    /** Should check anonymous user in onPress function */
-    shouldCheckActionAllowedOnPress?: boolean;
+        /** Whether should render hint text as HTML or as Text */
+        shouldRenderHintAsHTML?: boolean;
 
-    /** Text to display under the main item */
-    furtherDetails?: string;
+        /** Whether should render error text as HTML or as Text */
+        shouldRenderErrorAsHTML?: boolean;
 
-    /** The maximum number of lines for further details text */
-    furtherDetailsNumberOfLines?: number;
+        /** List of markdown rules that will be ignored */
+        excludedMarkdownRules?: string[];
 
-    /** The further details additional style */
-    furtherDetailsStyle?: StyleProp<TextStyle>;
+        /** Should check anonymous user in onPress function */
+        shouldCheckActionAllowedOnPress?: boolean;
 
-    /** Render custom content under the main item */
-    furtherDetailsComponent?: ReactElement;
+        /** Text to display under the main item */
+        furtherDetails?: string;
 
-    /** The function that should be called when this component is LongPressed or right-clicked. */
-    onSecondaryInteraction?: (event: GestureResponderEvent | MouseEvent) => void;
+        /** The maximum number of lines for further details text */
+        furtherDetailsNumberOfLines?: number;
 
-    /** Array of objects that map display names to their corresponding tooltip */
-    titleWithTooltips?: DisplayNameWithTooltip[] | undefined;
+        /** The further details additional style */
+        furtherDetailsStyle?: StyleProp<TextStyle>;
 
-    /** Icon should be displayed in its own color */
-    displayInDefaultIconColor?: boolean;
+        /** Render custom content under the main item */
+        furtherDetailsComponent?: ReactElement;
 
-    /** Determines how the icon should be resized to fit its container */
-    contentFit?: ImageContentFit;
+        /** The function that should be called when this component is LongPressed or right-clicked. */
+        onSecondaryInteraction?: (event: GestureResponderEvent | MouseEvent) => void;
 
-    /** Is this in the Pane */
-    isPaneMenu?: boolean;
+        /** Array of objects that map display names to their corresponding tooltip */
+        titleWithTooltips?: DisplayNameWithTooltip[] | undefined;
 
-    /** Adds padding to the left of the text when there is no icon. */
-    shouldPutLeftPaddingWhenNoIcon?: boolean;
+        /** Icon should be displayed in its own color */
+        displayInDefaultIconColor?: boolean;
 
-    /** Handles what to do when the item is focused */
-    onFocus?: () => void;
+        /** Determines how the icon should be resized to fit its container */
+        contentFit?: ImageContentFit;
 
-    /** Handles what to do when the item loose focus */
-    onBlur?: () => void;
+        /** Is this in the Pane */
+        isPaneMenu?: boolean;
 
-    /** Optional account id if it's user avatar or policy id if it's workspace avatar */
-    avatarID?: number | string;
+        /** Adds padding to the left of the text when there is no icon. */
+        shouldPutLeftPaddingWhenNoIcon?: boolean;
 
-    /** Whether to show the tooltip */
-    shouldRenderTooltip?: boolean;
+        /** Handles what to do when the item is focused */
+        onFocus?: () => void;
 
-    /** Anchor alignment of the tooltip */
-    tooltipAnchorAlignment?: TooltipAnchorAlignment;
+        /** Handles what to do when the item loose focus */
+        onBlur?: () => void;
 
-    /** Additional styles for tooltip wrapper */
-    tooltipWrapperStyle?: StyleProp<ViewStyle>;
+        /** Optional account id if it's user avatar or policy id if it's workspace avatar */
+        avatarID?: number | string;
 
-    /** Any additional amount to manually adjust the horizontal position of the tooltip */
-    tooltipShiftHorizontal?: number;
+        /** Whether to show the tooltip */
+        shouldRenderTooltip?: boolean;
 
-    /** Any additional amount to manually adjust the vertical position of the tooltip */
-    tooltipShiftVertical?: number;
+        /** Anchor alignment of the tooltip */
+        tooltipAnchorAlignment?: TooltipAnchorAlignment;
 
-    /** Render custom content inside the tooltip. */
-    renderTooltipContent?: () => ReactNode;
+        /** Additional styles for tooltip wrapper */
+        tooltipWrapperStyle?: StyleProp<ViewStyle>;
 
-    /** Callback to fire when the education tooltip is pressed */
-    onEducationTooltipPress?: () => void;
+        /** Any additional amount to manually adjust the horizontal position of the tooltip */
+        tooltipShiftHorizontal?: number;
 
-    /** Whether the tooltip should hide on scroll */
-    shouldHideOnScroll?: boolean;
+        /** Any additional amount to manually adjust the vertical position of the tooltip */
+        tooltipShiftVertical?: number;
 
-    shouldShowLoadingSpinnerIcon?: boolean;
+        /** Render custom content inside the tooltip. */
+        renderTooltipContent?: () => ReactNode;
 
-    /** Should selected item be marked with checkmark */
-    shouldShowSelectedItemCheck?: boolean;
+        /** Callback to fire when the education tooltip is pressed */
+        onEducationTooltipPress?: () => void;
 
-    /** Should use auto width for the icon container. */
-    shouldIconUseAutoWidthStyle?: boolean;
+        /** Whether the tooltip should hide on scroll */
+        shouldHideOnScroll?: boolean;
 
-    /** Should break word for room title */
-    shouldBreakWord?: boolean;
+        shouldShowLoadingSpinnerIcon?: boolean;
 
-    /** Pressable component Test ID. Used to locate the component in tests. */
-    pressableTestID?: string;
+        /** Should selected item be marked with checkmark */
+        shouldShowSelectedItemCheck?: boolean;
 
-    /** Whether to teleport the portal to the modal layer */
-    shouldTeleportPortalToModalLayer?: boolean;
+        /** Should use auto width for the icon container. */
+        shouldIconUseAutoWidthStyle?: boolean;
 
-    /** The value to copy on secondary interaction */
-    copyValue?: string;
+        /** Should break word for room title */
+        shouldBreakWord?: boolean;
 
-    /** Plaid image for the bank */
-    plaidUrl?: string;
-};
+        /** Pressable component Test ID. Used to locate the component in tests. */
+        pressableTestID?: string;
+
+        /** Whether to teleport the portal to the modal layer */
+        shouldTeleportPortalToModalLayer?: boolean;
+
+        /** The value to copy in copy to clipboard action. Must be used in conjunction with `copyable=true`. Default value is `title` prop. */
+        copyValue?: string;
+
+        /** Should enable copy to clipboard action */
+        copyable?: boolean;
+
+        /** Plaid image for the bank */
+        plaidUrl?: string;
+
+        /** Report ID for the avatar */
+        iconReportID?: string;
+
+        /** Report ID for the avatar on the right */
+        rightIconReportID?: string;
+
+        /** Whether the menu item contains nested submenu items. */
+        hasSubMenuItems?: boolean;
+
+        /** Whether the screen containing the item is focused */
+        isFocused?: boolean;
+
+        /** Additional styles for the root wrapper View */
+        rootWrapperStyle?: StyleProp<ViewStyle>;
+
+        /** The accessibility role to use for this menu item */
+        role?: Role;
+
+        /** Whether to show the badge in a separate row */
+        shouldShowBadgeInSeparateRow?: boolean;
+
+        /** Whether to show the badge below the title */
+        shouldShowBadgeBelow?: boolean;
+
+        /** Whether item should be accessible */
+        shouldBeAccessible?: boolean;
+
+        /** Whether item should be focusable with keyboard */
+        tabIndex?: 0 | -1;
+
+        /** Additional styles for the right icon wrapper */
+        rightIconWrapperStyle?: StyleProp<ViewStyle>;
+    };
 
 type MenuItemProps = (IconProps | AvatarProps | NoIcon) & MenuItemBaseProps;
 
@@ -393,118 +438,135 @@ const getSubscriptAvatarBackgroundColor = (isHovered: boolean, isPressed: boolea
         return hoveredBackgroundColor;
     }
 };
-function MenuItem(
-    {
-        interactive = true,
-        onPress,
-        badgeText,
-        style,
-        wrapperStyle,
-        titleWrapperStyle,
-        outerWrapperStyle,
-        containerStyle,
-        titleStyle,
-        labelStyle,
-        descriptionTextStyle,
-        badgeStyle,
-        viewMode = CONST.OPTION_MODE.DEFAULT,
-        numberOfLinesTitle = 1,
-        numberOfLinesDescription = 2,
-        icon,
-        iconFill,
-        secondaryIcon,
-        secondaryIconFill,
-        iconType = CONST.ICON_TYPE_ICON,
-        isSecondaryIconHoverable = false,
-        iconWidth,
-        iconHeight,
-        iconStyles,
-        fallbackIcon = Expensicons.FallbackAvatar,
-        shouldShowTitleIcon = false,
-        titleIcon,
-        shouldShowRightIcon = false,
-        iconRight = Expensicons.ArrowRight,
-        furtherDetailsIcon,
-        furtherDetails,
-        furtherDetailsNumberOfLines = 2,
-        furtherDetailsStyle,
-        furtherDetailsComponent,
-        description,
-        helperText,
-        helperTextStyle,
-        errorText,
-        errorTextStyle,
-        shouldShowRedDotIndicator,
-        hintText,
-        success = false,
-        focused = false,
-        disabled = false,
-        title,
-        titleComponent,
-        titleContainerStyle,
-        subtitle,
-        shouldShowBasicTitle,
-        label,
-        shouldTruncateTitle = false,
-        characterLimit = 200,
-        isLabelHoverable = true,
-        rightLabel,
-        shouldShowSelectedState = false,
-        isSelected = false,
-        shouldStackHorizontally = false,
-        shouldShowDescriptionOnTop = false,
-        shouldShowRightComponent = false,
-        rightComponent,
-        floatRightAvatars = [],
-        floatRightAvatarSize,
-        shouldShowSubscriptRightAvatar = false,
-        shouldShowSubscriptAvatar: shouldShowSubscriptAvatarProp = false,
-        avatarSize = CONST.AVATAR_SIZE.DEFAULT,
-        isSmallAvatarSubscriptMenu = false,
-        brickRoadIndicator,
-        shouldRenderAsHTML = false,
-        shouldEscapeText = undefined,
-        shouldGreyOutWhenDisabled = true,
-        shouldRemoveBackground = false,
-        shouldRemoveHoverBackground = false,
-        shouldUseDefaultCursorWhenDisabled = false,
-        shouldShowLoadingSpinnerIcon = false,
-        isAnonymousAction = false,
-        shouldBlockSelection = false,
-        shouldParseTitle = false,
-        shouldParseHelperText = false,
-        shouldRenderHintAsHTML = false,
-        shouldRenderErrorAsHTML = false,
-        excludedMarkdownRules = [],
-        shouldCheckActionAllowedOnPress = true,
-        onSecondaryInteraction,
-        titleWithTooltips,
-        displayInDefaultIconColor = false,
-        contentFit = 'cover',
-        isPaneMenu = true,
-        shouldPutLeftPaddingWhenNoIcon = false,
-        onFocus,
-        onBlur,
-        avatarID,
-        shouldRenderTooltip = false,
-        shouldHideOnScroll = false,
-        tooltipAnchorAlignment,
-        tooltipWrapperStyle = {},
-        tooltipShiftHorizontal = 0,
-        tooltipShiftVertical = 0,
-        renderTooltipContent,
-        onEducationTooltipPress,
-        additionalIconStyles,
-        shouldShowSelectedItemCheck = false,
-        shouldIconUseAutoWidthStyle = false,
-        shouldBreakWord = false,
-        pressableTestID,
-        shouldTeleportPortalToModalLayer,
-        copyValue,
-        plaidUrl,
-    }: MenuItemProps,
-    ref: PressableRef,
-) {
+
+function MenuItem({
+    interactive = true,
+    onPress,
+    badgeText,
+    badgeIcon,
+    badgeSuccess,
+    onBadgePress,
+    shouldShowBadgeInSeparateRow = false,
+    shouldShowBadgeBelow = false,
+    style,
+    wrapperStyle,
+    titleWrapperStyle,
+    outerWrapperStyle,
+    containerStyle,
+    titleStyle,
+    labelStyle,
+    descriptionTextStyle,
+    badgeStyle,
+    viewMode = CONST.OPTION_MODE.DEFAULT,
+    numberOfLinesTitle = 1,
+    numberOfLinesDescription = 2,
+    icon,
+    iconFill,
+    secondaryIcon,
+    secondaryIconFill,
+    iconType = CONST.ICON_TYPE_ICON,
+    isSecondaryIconHoverable = false,
+    iconWidth,
+    iconHeight,
+    iconStyles,
+    fallbackIcon,
+    shouldShowTitleIcon = false,
+    titleIcon,
+    rightIconAccountID,
+    iconAccountID,
+    shouldShowRightIcon = false,
+    iconRight,
+    furtherDetailsIcon,
+    furtherDetails,
+    furtherDetailsNumberOfLines = 2,
+    furtherDetailsStyle,
+    furtherDetailsComponent,
+    description,
+    helperText,
+    helperTextStyle,
+    errorText,
+    errorTextStyle,
+    shouldShowRedDotIndicator,
+    hintText,
+    success = false,
+    iconReportID,
+    focused = false,
+    disabled = false,
+    title,
+    accessibilityLabel,
+    titleComponent,
+    titleContainerStyle,
+    subtitle,
+    shouldShowBasicTitle,
+    label,
+    shouldTruncateTitle = false,
+    characterLimit = 200,
+    isLabelHoverable = true,
+    rightLabel,
+    shouldShowSelectedState = false,
+    isSelected = false,
+    shouldStackHorizontally = false,
+    shouldShowDescriptionOnTop = false,
+    shouldShowRightComponent = false,
+    rightComponent,
+    leftComponent,
+    rightIconReportID,
+    avatarSize = CONST.AVATAR_SIZE.DEFAULT,
+    isSmallAvatarSubscriptMenu = false,
+    brickRoadIndicator,
+    shouldRenderAsHTML = false,
+    shouldEscapeText = undefined,
+    shouldGreyOutWhenDisabled = true,
+    shouldRemoveBackground = false,
+    shouldRemoveHoverBackground = false,
+    shouldUseDefaultCursorWhenDisabled = false,
+    shouldShowLoadingSpinnerIcon = false,
+    isAnonymousAction = false,
+    shouldBlockSelection = false,
+    shouldParseTitle = false,
+    shouldParseHelperText = false,
+    shouldRenderHintAsHTML = false,
+    shouldRenderErrorAsHTML = false,
+    excludedMarkdownRules = [],
+    shouldCheckActionAllowedOnPress = true,
+    onSecondaryInteraction,
+    titleWithTooltips,
+    displayInDefaultIconColor = false,
+    contentFit = 'cover',
+    isPaneMenu = true,
+    shouldPutLeftPaddingWhenNoIcon = false,
+    onFocus,
+    onBlur,
+    avatarID,
+    shouldRenderTooltip = false,
+    shouldHideOnScroll = false,
+    tooltipAnchorAlignment,
+    tooltipWrapperStyle = {},
+    tooltipShiftHorizontal = 0,
+    tooltipShiftVertical = 0,
+    renderTooltipContent,
+    onEducationTooltipPress,
+    additionalIconStyles,
+    shouldShowSelectedItemCheck = false,
+    shouldIconUseAutoWidthStyle = false,
+    shouldBreakWord = false,
+    pressableTestID,
+    shouldTeleportPortalToModalLayer,
+    plaidUrl,
+    copyValue = title,
+    copyable = false,
+    hasSubMenuItems = false,
+    forwardedFSClass,
+    ref,
+    isFocused,
+    sentryLabel,
+    rootWrapperStyle,
+    role = CONST.ROLE.MENUITEM,
+    shouldBeAccessible = true,
+    tabIndex = 0,
+    rightIconWrapperStyle,
+}: MenuItemProps) {
+    const icons = useMemoizedLazyExpensifyIcons(['ArrowRight', 'FallbackAvatar', 'DotIndicator', 'Checkmark']);
     const theme = useTheme();
     const styles = useThemeStyles();
     const StyleUtils = useStyleUtils();
@@ -512,14 +574,14 @@ function MenuItem(
     const {shouldUseNarrowLayout} = useResponsiveLayout();
     const {isExecuting, singleExecution, waitForNavigate} = useContext(MenuItemGroupContext) ?? {};
     const popoverAnchor = useRef<View>(null);
+    const deviceHasHoverSupport = hasHoverSupport();
 
     const isCompact = viewMode === CONST.OPTION_MODE.COMPACT;
-    const isDeleted = style && Array.isArray(style) ? style.includes(styles.offlineFeedback.deleted) : false;
+    const isDeleted = style && Array.isArray(style) ? style.includes(styles.offlineFeedbackDeleted) : false;
     const descriptionVerticalMargin = shouldShowDescriptionOnTop ? styles.mb1 : styles.mt1;
-    const fallbackAvatarSize = isCompact ? CONST.AVATAR_SIZE.SMALL : CONST.AVATAR_SIZE.DEFAULT;
-    const firstRightIcon = floatRightAvatars.at(0);
+    const defaultAccessibilityLabel = (shouldShowDescriptionOnTop ? [description, title] : [title, description]).filter(Boolean).join(', ');
 
-    const combinedTitleTextStyle = StyleUtils.combineStyles(
+    const combinedTitleTextStyle = StyleUtils.combineStyles<TextStyle>(
         [
             styles.flexShrink1,
             styles.popoverMenuText,
@@ -529,22 +591,20 @@ function MenuItem(
             numberOfLinesTitle !== 1 ? styles.preWrap : styles.pre,
             interactive && disabled ? {...styles.userSelectNone} : {},
             styles.ltr,
-            isDeleted ? styles.offlineFeedback.deleted : {},
+            isDeleted ? styles.offlineFeedbackDeleted : {},
             shouldBreakWord ? styles.breakWord : {},
             styles.mw100,
         ],
-        titleStyle ?? {},
+        (titleStyle ?? {}) as TextStyle,
     );
-    const shouldShowAvatar = !!icon && Array.isArray(icon);
-    const firstIcon = Array.isArray(icon) && !!icon.length ? icon.at(0) : undefined;
-    const shouldShowSubscriptAvatar = shouldShowSubscriptAvatarProp && !!firstIcon;
+
     const descriptionTextStyles = StyleUtils.combineStyles<TextStyle>([
         styles.textLabelSupporting,
         icon && !Array.isArray(icon) ? styles.ml3 : {},
         title ? descriptionVerticalMargin : StyleUtils.getFontSizeStyle(variables.fontSizeNormal),
         title ? styles.textLineHeightNormal : StyleUtils.getLineHeightStyle(variables.fontSizeNormalHeight),
         (descriptionTextStyle as TextStyle) || styles.breakWord,
-        isDeleted ? styles.offlineFeedback.deleted : {},
+        isDeleted ? styles.offlineFeedbackDeleted : {},
     ]);
 
     const html = useMemo(() => {
@@ -589,13 +649,14 @@ function MenuItem(
         return textToWrap ? `<comment><muted-text-label>${textToWrap}</muted-text-label></comment>` : '';
     }, [shouldParseHelperText, helperHtml]);
 
-    const hasPressableRightComponent = iconRight || (shouldShowRightComponent && rightComponent);
+    const hasPressableRightComponent = (iconRight ?? icons.ArrowRight) || (shouldShowRightComponent && rightComponent);
 
     const renderTitleContent = () => {
         if (title && titleWithTooltips && Array.isArray(titleWithTooltips) && titleWithTooltips.length > 0) {
             return (
                 <DisplayNames
                     fullTitle={title}
+                    shouldParseFullTitle={!shouldRenderAsHTML}
                     displayNamesWithTooltips={titleWithTooltips}
                     tooltipEnabled
                     numberOfLines={1}
@@ -653,8 +714,13 @@ function MenuItem(
         onSecondaryInteraction?.(event);
     };
 
+    const isIDPassed = !!iconReportID || !!iconAccountID || iconAccountID === CONST.DEFAULT_NUMBER_ID;
+
     return (
-        <View onBlur={onBlur}>
+        <View
+            style={rootWrapperStyle}
+            onBlur={onBlur}
+        >
             {!!label && !isLabelHoverable && (
                 <View style={[styles.ph5, labelStyle]}>
                     <Text style={StyleUtils.combineStyles([styles.sidebarLinkText, styles.optionAlternateText, styles.textLabelSupporting, styles.pre])}>{label}</Text>
@@ -672,13 +738,13 @@ function MenuItem(
                 shouldHideOnScroll={shouldHideOnScroll}
             >
                 <View>
-                    <Hoverable>
+                    <Hoverable isFocused={isFocused}>
                         {(isHovered) => (
                             <PressableWithSecondaryInteraction
                                 onPress={shouldCheckActionAllowedOnPress ? callFunctionIfActionIsAllowed(onPressAction, isAnonymousAction) : onPressAction}
                                 onPressIn={() => shouldBlockSelection && shouldUseNarrowLayout && canUseTouchScreen() && ControlSelection.block()}
                                 onPressOut={ControlSelection.unblock}
-                                onSecondaryInteraction={copyValue ? secondaryInteraction : onSecondaryInteraction}
+                                onSecondaryInteraction={copyable && !deviceHasHoverSupport ? secondaryInteraction : onSecondaryInteraction}
                                 wrapperStyle={outerWrapperStyle}
                                 activeOpacity={!interactive ? 1 : variables.pressDimValue}
                                 opacityAnimationDuration={0}
@@ -700,42 +766,40 @@ function MenuItem(
                                 disabledStyle={shouldUseDefaultCursorWhenDisabled && [styles.cursorDefault]}
                                 disabled={disabled || isExecuting}
                                 ref={mergeRefs(ref, popoverAnchor)}
-                                role={CONST.ROLE.MENUITEM}
-                                accessibilityLabel={title ? title.toString() : ''}
-                                accessible
+                                role={role}
+                                accessibilityLabel={accessibilityLabel ?? defaultAccessibilityLabel}
+                                accessible={shouldBeAccessible}
+                                tabIndex={tabIndex}
                                 onFocus={onFocus}
+                                sentryLabel={sentryLabel}
                             >
                                 {({pressed}) => (
                                     <View style={[styles.flex1]}>
                                         <View style={[styles.flexRow]}>
                                             <View style={[styles.flexColumn, styles.flex1]}>
                                                 {!!label && isLabelHoverable && (
-                                                    <View style={[icon ? styles.mb2 : null, labelStyle]}>
+                                                    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+                                                    <View style={[isIDPassed ? styles.mb2 : null, labelStyle]}>
                                                         <Text style={StyleUtils.combineStyles([styles.sidebarLinkText, styles.optionAlternateText, styles.textLabelSupporting, styles.pre])}>
                                                             {label}
                                                         </Text>
                                                     </View>
                                                 )}
                                                 <View style={[styles.flexRow, styles.pointerEventsAuto, disabled && !shouldUseDefaultCursorWhenDisabled && styles.cursorDisabled]}>
-                                                    {shouldShowAvatar && !shouldShowSubscriptAvatar && (
-                                                        <MultipleAvatars
-                                                            isHovered={isHovered}
-                                                            isPressed={pressed}
-                                                            icons={icon as IconType[]}
+                                                    {!!leftComponent && <View style={[styles.mr3]}>{leftComponent}</View>}
+                                                    {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing */}
+                                                    {isIDPassed && (
+                                                        <ReportActionAvatars
+                                                            subscriptAvatarBorderColor={getSubscriptAvatarBackgroundColor(isHovered, pressed, theme.hoverComponentBG, theme.buttonHoveredBG)}
+                                                            singleAvatarContainerStyle={[styles.actionAvatar, styles.mr3]}
                                                             size={avatarSize}
-                                                            secondAvatarStyle={[
+                                                            secondaryAvatarContainerStyle={[
                                                                 StyleUtils.getBackgroundAndBorderStyle(theme.sidebar),
                                                                 pressed && interactive ? StyleUtils.getBackgroundAndBorderStyle(theme.buttonPressedBG) : undefined,
                                                                 isHovered && !pressed && interactive ? StyleUtils.getBackgroundAndBorderStyle(theme.border) : undefined,
                                                             ]}
-                                                        />
-                                                    )}
-                                                    {shouldShowAvatar && shouldShowSubscriptAvatar && (
-                                                        <SubscriptAvatar
-                                                            backgroundColor={getSubscriptAvatarBackgroundColor(isHovered, pressed, theme.hoverComponentBG, theme.buttonHoveredBG)}
-                                                            mainAvatar={firstIcon as IconType}
-                                                            secondaryAvatar={(icon as IconType[]).at(1)}
-                                                            size={avatarSize}
+                                                            reportID={iconReportID}
+                                                            accountIDs={iconAccountID ? [iconAccountID] : undefined}
                                                         />
                                                     )}
                                                     {!icon && shouldPutLeftPaddingWhenNoIcon && (
@@ -766,29 +830,29 @@ function MenuItem(
                                                                         width={iconWidth}
                                                                         height={iconHeight}
                                                                         fill={
+                                                                            // eslint-disable-next-line no-nested-ternary
                                                                             displayInDefaultIconColor
                                                                                 ? undefined
-                                                                                : (iconFill ??
-                                                                                  StyleUtils.getIconFillColor(
-                                                                                      getButtonState(focused || isHovered, pressed, success, disabled, interactive),
-                                                                                      true,
-                                                                                      isPaneMenu,
-                                                                                  ))
+                                                                                : typeof iconFill === 'function'
+                                                                                  ? iconFill(isHovered)
+                                                                                  : (iconFill ??
+                                                                                    StyleUtils.getIconFillColor(
+                                                                                        getButtonState(focused || isHovered, pressed, success, disabled, interactive),
+                                                                                        true,
+                                                                                        isPaneMenu,
+                                                                                    ))
                                                                         }
                                                                         additionalStyles={additionalIconStyles}
                                                                     />
                                                                 ) : (
-                                                                    <ActivityIndicator
-                                                                        size="small"
-                                                                        color={theme.textSupporting}
-                                                                    />
+                                                                    <ActivityIndicator color={theme.textSupporting} />
                                                                 ))}
                                                             {!!icon && iconType === CONST.ICON_TYPE_WORKSPACE && (
                                                                 <Avatar
                                                                     imageStyles={[styles.alignSelfCenter]}
                                                                     size={CONST.AVATAR_SIZE.DEFAULT}
                                                                     source={icon}
-                                                                    fallbackIcon={fallbackIcon}
+                                                                    fallbackIcon={fallbackIcon ?? icons.FallbackAvatar}
                                                                     name={title}
                                                                     avatarID={avatarID}
                                                                     type={CONST.ICON_TYPE_WORKSPACE}
@@ -799,7 +863,7 @@ function MenuItem(
                                                                     imageStyles={[styles.alignSelfCenter]}
                                                                     source={icon}
                                                                     avatarID={avatarID}
-                                                                    fallbackIcon={fallbackIcon}
+                                                                    fallbackIcon={fallbackIcon ?? icons.FallbackAvatar}
                                                                     size={avatarSize}
                                                                     type={CONST.ICON_TYPE_AVATAR}
                                                                 />
@@ -838,7 +902,10 @@ function MenuItem(
                                                             </Text>
                                                         )}
                                                         {(!!title || !!shouldShowTitleIcon) && (
-                                                            <View style={[styles.flexRow, styles.alignItemsCenter, styles.mw100, titleWrapperStyle]}>
+                                                            <View
+                                                                style={[styles.flexRow, styles.alignItemsCenter, styles.mw100, titleWrapperStyle]}
+                                                                fsClass={forwardedFSClass}
+                                                            >
                                                                 {!!title && (shouldRenderAsHTML || (shouldParseTitle && !!html.length)) && (
                                                                     <View style={styles.renderHTMLTitle}>
                                                                         <RenderHTML html={processedTitle} />
@@ -892,16 +959,30 @@ function MenuItem(
                                                                 </Text>
                                                             </View>
                                                         )}
-                                                        {!!furtherDetailsComponent && <View style={[styles.flexRow, styles.alignItemsCenter]}>{furtherDetailsComponent}</View>}
+                                                        {!!badgeText && shouldShowBadgeBelow && (
+                                                            <Badge
+                                                                text={badgeText}
+                                                                icon={badgeIcon}
+                                                                badgeStyles={[badgeStyle, styles.alignSelfStart, styles.ml3, styles.mt2]}
+                                                                success={badgeSuccess}
+                                                                onPress={onBadgePress}
+                                                                pressable={!!onBadgePress}
+                                                            />
+                                                        )}
+                                                        {furtherDetailsComponent}
                                                         {titleComponent}
                                                     </View>
                                                 </View>
                                             </View>
                                             <View style={[styles.flexRow, StyleUtils.getMenuItemTextContainerStyle(isCompact), !hasPressableRightComponent && styles.pointerEventsNone]}>
-                                                {!!badgeText && (
+                                                {!!badgeText && !shouldShowBadgeInSeparateRow && !shouldShowBadgeBelow && (
                                                     <Badge
                                                         text={badgeText}
+                                                        icon={badgeIcon}
                                                         badgeStyles={badgeStyle}
+                                                        success={badgeSuccess}
+                                                        onPress={onBadgePress}
+                                                        pressable={!!onBadgePress}
                                                     />
                                                 )}
                                                 {/* Since subtitle can be of type number, we should allow 0 to be shown */}
@@ -910,33 +991,29 @@ function MenuItem(
                                                         <Text style={[styles.textLabelSupporting, ...(combinedStyle as TextStyle[])]}>{subtitle}</Text>
                                                     </View>
                                                 )}
-                                                {floatRightAvatars?.length > 0 && !!firstRightIcon && (
+                                                {(!!rightIconAccountID || !!rightIconReportID) && (
                                                     <View style={[styles.alignItemsCenter, styles.justifyContentCenter, brickRoadIndicator ? styles.mr2 : styles.mrn2]}>
-                                                        {shouldShowSubscriptRightAvatar ? (
-                                                            <SubscriptAvatar
-                                                                backgroundColor={isHovered ? theme.activeComponentBG : theme.componentBG}
-                                                                mainAvatar={firstRightIcon}
-                                                                secondaryAvatar={floatRightAvatars.at(1)}
-                                                                size={floatRightAvatarSize ?? fallbackAvatarSize}
-                                                            />
-                                                        ) : (
-                                                            <MultipleAvatars
-                                                                isHovered={isHovered}
-                                                                isPressed={pressed}
-                                                                icons={floatRightAvatars}
-                                                                size={floatRightAvatarSize ?? fallbackAvatarSize}
-                                                                fallbackIcon={defaultWorkspaceAvatars.WorkspaceBuilding}
-                                                                shouldStackHorizontally={shouldStackHorizontally}
-                                                                isFocusMode
-                                                            />
-                                                        )}
+                                                        <ReportActionAvatars
+                                                            subscriptAvatarBorderColor={isHovered ? theme.activeComponentBG : theme.componentBG}
+                                                            singleAvatarContainerStyle={[styles.actionAvatar, styles.mr2]}
+                                                            reportID={rightIconReportID}
+                                                            size={CONST.AVATAR_SIZE.SMALL}
+                                                            horizontalStacking={
+                                                                shouldStackHorizontally && {
+                                                                    isHovered,
+                                                                    isPressed: pressed,
+                                                                }
+                                                            }
+                                                            accountIDs={!!rightIconAccountID && Number(rightIconAccountID) > 0 ? [Number(rightIconAccountID)] : undefined}
+                                                            useMidSubscriptSizeForMultipleAvatars
+                                                        />
                                                     </View>
                                                 )}
                                                 {!!brickRoadIndicator && (
                                                     <View style={[styles.alignItemsCenter, styles.justifyContentCenter, styles.ml1]}>
                                                         <Icon
-                                                            src={Expensicons.DotIndicator}
-                                                            fill={brickRoadIndicator === 'error' ? theme.danger : theme.success}
+                                                            src={icons.DotIndicator}
+                                                            fill={brickRoadIndicator === CONST.BRICK_ROAD_INDICATOR_STATUS.ERROR ? theme.danger : theme.success}
                                                         />
                                                     </View>
                                                 )}
@@ -951,11 +1028,16 @@ function MenuItem(
                                                             styles.pointerEventsAuto,
                                                             StyleUtils.getMenuItemIconStyle(isCompact),
                                                             disabled && !shouldUseDefaultCursorWhenDisabled && styles.cursorDisabled,
+                                                            hasSubMenuItems && styles.opacitySemiTransparent,
+                                                            hasSubMenuItems && styles.pl6,
+                                                            rightIconWrapperStyle,
                                                         ]}
                                                     >
                                                         <Icon
-                                                            src={iconRight}
+                                                            src={iconRight ?? icons.ArrowRight}
                                                             fill={StyleUtils.getIconFillColor(getButtonState(focused || isHovered, pressed, success, disabled, interactive))}
+                                                            width={hasSubMenuItems ? variables.iconSizeSmall : variables.iconSizeNormal}
+                                                            height={hasSubMenuItems ? variables.iconSizeSmall : variables.iconSizeNormal}
                                                         />
                                                     </View>
                                                 )}
@@ -963,13 +1045,36 @@ function MenuItem(
                                                 {shouldShowSelectedState && <SelectCircle isChecked={isSelected} />}
                                                 {shouldShowSelectedItemCheck && isSelected && (
                                                     <Icon
-                                                        src={Expensicons.Checkmark}
+                                                        src={icons.Checkmark}
                                                         fill={theme.iconSuccessFill}
                                                         additionalStyles={styles.alignSelfCenter}
                                                     />
                                                 )}
+                                                {copyable && deviceHasHoverSupport && !interactive && isHovered && !!copyValue && (
+                                                    <View style={styles.justifyContentCenter}>
+                                                        <CopyTextToClipboard
+                                                            urlToCopy={copyValue}
+                                                            shouldHaveActiveBackground
+                                                            iconHeight={variables.iconSizeExtraSmall}
+                                                            iconWidth={variables.iconSizeExtraSmall}
+                                                            iconStyles={styles.t0}
+                                                            styles={styles.reportActionContextMenuMiniButton}
+                                                            shouldUseButtonBackground
+                                                        />
+                                                    </View>
+                                                )}
                                             </View>
                                         </View>
+                                        {!!badgeText && shouldShowBadgeInSeparateRow && (
+                                            <Badge
+                                                text={badgeText}
+                                                icon={badgeIcon}
+                                                badgeStyles={[badgeStyle, styles.alignSelfStart, styles.ml13, styles.mt2]}
+                                                success={badgeSuccess}
+                                                onPress={onBadgePress}
+                                                pressable={!!onBadgePress}
+                                            />
+                                        )}
                                         {!!errorText && (
                                             <FormHelpMessage
                                                 isError
@@ -1007,7 +1112,5 @@ function MenuItem(
     );
 }
 
-MenuItem.displayName = 'MenuItem';
-
 export type {MenuItemBaseProps, MenuItemProps};
-export default forwardRef(MenuItem);
+export default MenuItem;

@@ -5,7 +5,6 @@ import EmojiPickerButtonDropdown from '@components/EmojiPicker/EmojiPickerButton
 import FormProvider from '@components/Form/FormProvider';
 import InputWrapper from '@components/Form/InputWrapper';
 import type {FormInputErrors, FormOnyxValues, FormRef} from '@components/Form/types';
-import HeaderPageLayout from '@components/HeaderPageLayout';
 import HeaderWithBackButton from '@components/HeaderWithBackButton';
 import * as Expensicons from '@components/Icon/Expensicons';
 import MenuItem from '@components/MenuItem';
@@ -16,14 +15,17 @@ import Text from '@components/Text';
 import TextInput from '@components/TextInput';
 import useAutoFocusInput from '@hooks/useAutoFocusInput';
 import useCurrentUserPersonalDetails from '@hooks/useCurrentUserPersonalDetails';
+import {useMemoizedLazyExpensifyIcons} from '@hooks/useLazyAsset';
 import useLocalize from '@hooks/useLocalize';
 import useOnyx from '@hooks/useOnyx';
-import usePermissions from '@hooks/usePermissions';
+import useResponsiveLayout from '@hooks/useResponsiveLayout';
 import useStyleUtils from '@hooks/useStyleUtils';
 import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
+import {isMobileChrome} from '@libs/Browser';
 import DateUtils from '@libs/DateUtils';
 import focusAfterModalClose from '@libs/focusAfterModalClose';
+import focusComposerWithDelay from '@libs/focusComposerWithDelay';
 import {formatPhoneNumber} from '@libs/LocalePhoneNumber';
 import Navigation from '@libs/Navigation/Navigation';
 import {getPersonalDetailByEmail} from '@libs/PersonalDetailsUtils';
@@ -38,10 +40,19 @@ import INPUT_IDS from '@src/types/form/SettingsStatusSetForm';
 const initialEmoji = '💬';
 
 function StatusPage() {
+    const icons = useMemoizedLazyExpensifyIcons(['FallbackAvatar']);
     const theme = useTheme();
     const styles = useThemeStyles();
     const StyleUtils = useStyleUtils();
     const {translate} = useLocalize();
+
+    // We intentionally use isSmallScreenWidth here. Since the Status page is displayed
+    // inside the RHP, shouldUseNarrowLayout is always true. However, we still need to
+    // distinguish between large and small screens, so we rely on isSmallScreenWidth
+    // to accurately detect the screen size.
+    // eslint-disable-next-line rulesdir/prefer-shouldUseNarrowLayout-instead-of-isSmallScreenWidth
+    const {isSmallScreenWidth} = useResponsiveLayout();
+
     const [draftStatus] = useOnyx(ONYXKEYS.CUSTOM_STATUS_DRAFT, {canBeMissing: true});
     const currentUserPersonalDetails = useCurrentUserPersonalDetails();
     const formRef = useRef<FormRef>(null);
@@ -51,9 +62,6 @@ function StatusPage() {
     const hasVacationDelegate = !!vacationDelegate?.delegate;
     const vacationDelegatePersonalDetails = getPersonalDetailByEmail(vacationDelegate?.delegate ?? '');
     const formattedDelegateLogin = formatPhoneNumber(vacationDelegatePersonalDetails?.login ?? '');
-
-    const {isBetaEnabled} = usePermissions();
-    const isVacationDelegateEnabled = isBetaEnabled(CONST.BETAS.VACATION_DELEGATE);
 
     const currentUserEmojiCode = currentUserPersonalDetails?.status?.emojiCode ?? '';
     const currentUserStatusText = currentUserPersonalDetails?.status?.text ?? '';
@@ -69,8 +77,8 @@ function StatusPage() {
     const customClearAfter = useMemo(() => {
         // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
         const dataToShow = draftClearAfter || currentUserClearAfter;
-        return DateUtils.getLocalizedTimePeriodDescription(dataToShow);
-    }, [draftClearAfter, currentUserClearAfter]);
+        return DateUtils.getLocalizedTimePeriodDescription(translate, dataToShow);
+    }, [draftClearAfter, currentUserClearAfter, translate]);
 
     const isValidClearAfterDate = useCallback(() => {
         // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
@@ -84,9 +92,13 @@ function StatusPage() {
 
     const navigateBackToPreviousScreenTask = useRef<{
         then: (
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
             onfulfilled?: () => typeof InteractionManager.runAfterInteractions,
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
             onrejected?: () => typeof InteractionManager.runAfterInteractions,
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
         ) => Promise<typeof InteractionManager.runAfterInteractions>;
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
         done: (...args: Array<typeof InteractionManager.runAfterInteractions>) => typeof InteractionManager.runAfterInteractions;
         cancel: () => void;
     } | null>(null);
@@ -120,8 +132,9 @@ function StatusPage() {
                 emojiCode: !emojiCode && statusText ? initialEmoji : emojiCode,
                 clearAfter: clearAfterTime !== CONST.CUSTOM_STATUS_TYPES.NEVER ? clearAfterTime : '',
             });
-            clearDraftCustomStatus();
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
             navigateBackToPreviousScreenTask.current = InteractionManager.runAfterInteractions(() => {
+                clearDraftCustomStatus();
                 navigateBackToPreviousScreen();
             });
         },
@@ -140,6 +153,7 @@ function StatusPage() {
         });
         formRef.current?.resetForm({[INPUT_IDS.EMOJI_CODE]: ''});
 
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
         navigateBackToPreviousScreenTask.current = InteractionManager.runAfterInteractions(() => {
             navigateBackToPreviousScreen();
         });
@@ -155,7 +169,7 @@ function StatusPage() {
         }
 
         return () => clearDraftCustomStatus();
-        // eslint-disable-next-line react-compiler/react-compiler, react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const validateForm = useCallback(
@@ -165,10 +179,7 @@ function StatusPage() {
             }
             const errors: FormInputErrors<typeof ONYXKEYS.FORMS.SETTINGS_STATUS_SET_FORM> = {};
             if (statusText.length > CONST.STATUS_TEXT_MAX_LENGTH) {
-                errors[INPUT_IDS.STATUS_TEXT] = translate('common.error.characterLimitExceedCounter', {
-                    length: statusText.length,
-                    limit: CONST.STATUS_TEXT_MAX_LENGTH,
-                });
+                errors[INPUT_IDS.STATUS_TEXT] = translate('common.error.characterLimitExceedCounter', statusText.length, CONST.STATUS_TEXT_MAX_LENGTH);
             }
             return errors;
         },
@@ -183,7 +194,7 @@ function StatusPage() {
             style={[StyleUtils.getBackgroundColorStyle(theme.PAGE_THEMES[SCREENS.SETTINGS.PROFILE.STATUS].backgroundColor)]}
             shouldEnablePickerAvoiding={false}
             includeSafeAreaPaddingBottom
-            testID={HeaderPageLayout.displayName}
+            testID="HeaderPageLayout"
             shouldEnableMaxHeight
         >
             <HeaderWithBackButton
@@ -204,7 +215,7 @@ function StatusPage() {
                 <View style={[styles.mh5, styles.mv1]}>
                     <Text style={[styles.textNormal, styles.mt2]}>{translate('statusPage.statusExplanation')}</Text>
                 </View>
-                <View style={[styles.mb2, styles.mt4]}>
+                <View style={[styles.mt4]}>
                     <View style={[styles.mb4, styles.ph5]}>
                         <InputWrapper
                             InputComponent={EmojiPickerButtonDropdown}
@@ -213,13 +224,21 @@ function StatusPage() {
                             role={CONST.ROLE.PRESENTATION}
                             defaultValue={defaultEmoji}
                             style={styles.mb3}
-                            onModalHide={() => focusAfterModalClose(inputRef.current)}
+                            onModalHide={() => {
+                                // On mobile Chrome, the input will blur immediately upon focus if the focus function is called right after the modal closes, even though the modal has fully closed.
+                                // Therefore, use the `focusComposerWithDelay` helper as used in `ComposerWithSuggestions` for this case.
+                                if (isMobileChrome()) {
+                                    focusComposerWithDelay(inputRef.current)(true);
+                                } else {
+                                    focusAfterModalClose(inputRef.current);
+                                }
+                            }}
                             // eslint-disable-next-line @typescript-eslint/no-unused-vars
                             onInputChange={(emoji: string): void => {}}
                         />
                         <InputWrapper
                             InputComponent={TextInput}
-                            ref={inputCallbackRef}
+                            ref={isSmallScreenWidth ? undefined : inputCallbackRef}
                             inputID={INPUT_IDS.STATUS_TEXT}
                             role={CONST.ROLE.PRESENTATION}
                             label={translate('statusPage.message')}
@@ -238,54 +257,47 @@ function StatusPage() {
                     {(!!currentUserEmojiCode || !!currentUserStatusText) && (
                         <MenuItem
                             title={translate('statusPage.clearStatus')}
-                            titleStyle={styles.ml0}
                             icon={Expensicons.Trashcan}
                             onPress={clearStatus}
-                            iconFill={theme.danger}
-                            wrapperStyle={[styles.pl2]}
                         />
                     )}
                 </View>
-                {isVacationDelegateEnabled && (
-                    <View style={[styles.mb2, styles.mt6]}>
-                        <Text style={[styles.mh5]}>{translate('statusPage.setVacationDelegate')}</Text>
-                        {hasVacationDelegate && <Text style={[styles.mh5, styles.mt6, styles.mutedTextLabel]}>{translate('statusPage.vacationDelegate')}</Text>}
-                        {hasVacationDelegate ? (
-                            <OfflineWithFeedback
-                                pendingAction={vacationDelegate?.pendingAction}
-                                errors={vacationDelegate?.errors}
-                                errorRowStyles={styles.mh5}
-                                onClose={() => clearVacationDelegateError(vacationDelegate?.previousDelegate)}
-                            >
-                                <MenuItem
-                                    title={vacationDelegatePersonalDetails?.displayName ?? fallbackVacationDelegateLogin}
-                                    description={fallbackVacationDelegateLogin}
-                                    avatarID={vacationDelegatePersonalDetails?.accountID ?? CONST.DEFAULT_NUMBER_ID}
-                                    icon={vacationDelegatePersonalDetails?.avatar ?? Expensicons.FallbackAvatar}
-                                    iconType={CONST.ICON_TYPE_AVATAR}
-                                    numberOfLinesDescription={1}
-                                    shouldShowRightIcon
-                                    onPress={() => Navigation.navigate(ROUTES.SETTINGS_VACATION_DELEGATE)}
-                                    containerStyle={styles.pr2}
-                                />
-                            </OfflineWithFeedback>
-                        ) : (
-                            <View style={[styles.mt1]}>
-                                <MenuItem
-                                    description={translate('statusPage.vacationDelegate')}
-                                    shouldShowRightIcon
-                                    onPress={() => Navigation.navigate(ROUTES.SETTINGS_VACATION_DELEGATE)}
-                                    containerStyle={styles.pr2}
-                                />
-                            </View>
-                        )}
-                    </View>
-                )}
+                <View style={[styles.mb2, styles.mt6]}>
+                    <Text style={[styles.mh5]}>{translate('statusPage.setVacationDelegate')}</Text>
+                    {hasVacationDelegate && <Text style={[styles.mh5, styles.mt6, styles.mutedTextLabel]}>{translate('statusPage.vacationDelegate')}</Text>}
+                    {hasVacationDelegate ? (
+                        <OfflineWithFeedback
+                            pendingAction={vacationDelegate?.pendingAction}
+                            errors={vacationDelegate?.errors}
+                            errorRowStyles={styles.mh5}
+                            onClose={() => clearVacationDelegateError(vacationDelegate?.previousDelegate)}
+                        >
+                            <MenuItem
+                                title={vacationDelegatePersonalDetails?.displayName ?? fallbackVacationDelegateLogin}
+                                description={fallbackVacationDelegateLogin}
+                                avatarID={vacationDelegatePersonalDetails?.accountID ?? CONST.DEFAULT_NUMBER_ID}
+                                icon={vacationDelegatePersonalDetails?.avatar ?? icons.FallbackAvatar}
+                                iconType={CONST.ICON_TYPE_AVATAR}
+                                numberOfLinesDescription={1}
+                                shouldShowRightIcon
+                                onPress={() => Navigation.navigate(ROUTES.SETTINGS_VACATION_DELEGATE)}
+                                containerStyle={styles.pr2}
+                            />
+                        </OfflineWithFeedback>
+                    ) : (
+                        <View style={[styles.mt1]}>
+                            <MenuItem
+                                description={translate('statusPage.vacationDelegate')}
+                                shouldShowRightIcon
+                                onPress={() => Navigation.navigate(ROUTES.SETTINGS_VACATION_DELEGATE)}
+                                containerStyle={styles.pr2}
+                            />
+                        </View>
+                    )}
+                </View>
             </FormProvider>
         </ScreenWrapper>
     );
 }
-
-StatusPage.displayName = 'StatusPage';
 
 export default StatusPage;

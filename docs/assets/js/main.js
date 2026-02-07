@@ -101,15 +101,13 @@ function closeSidebarOnClickOutside(event) {
 
 function openSidebar() {
     document.getElementById('sidebar-layer').style.display = 'block';
-    document.getElementById('gsc-i-id1').focus();
+    document.getElementById('search-input').focus();
 
     // Make body unscrollable
     const yAxis = document.documentElement.style.getPropertyValue('y-axis');
     const body = document.body;
     body.style.position = 'fixed';
     body.style.top = `-${yAxis}`;
-
-    document.getElementById('gsc-i-id1').focus();
 
     // Close the sidebar when clicking sidebar layer (outside the sidebar search)
     const sidebarLayer = document.getElementById('sidebar-layer');
@@ -118,52 +116,89 @@ function openSidebar() {
     }
 }
 
-// Function to adapt & fix cropped SVG viewBox from Google based on viewport (Mobile or Tablet-Desktop)
-function changeSVGViewBoxGoogle() {
-    // Get all inline Google SVG elements on the page
-    const svgsGoogle = document.querySelectorAll('svg:([data-source])');
+const SEARCH_API_URL = 'https://www.expensify.com/api/SearchHelpsite';
 
-    Array.from(svgsGoogle).forEach((svg) => {
-        // Set the viewBox attribute to '0 0 13 13' to make the svg fit in the mobile view
-        svg.setAttribute('viewBox', '0 0 20 20');
-        svg.setAttribute('height', '16');
-        svg.setAttribute('width', '16');
-    });
+function getTitleFromURL(url) {
+    return url.split('/').pop().replace(/-/g, ' ');
 }
 
-// Function to insert element after another
-// In this case, we insert the label element after the Google Search Input so we can have the same label animation effect
-function insertElementAfter(referenceNode, newNode) {
-    referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+/**
+ * Clone a template element by its ID.
+ *
+ * @param {string} templateId
+ * @returns {DocumentFragment}
+ */
+function cloneTemplate(templateId) {
+    return document.getElementById(templateId).content.cloneNode(true);
 }
 
-// Update the ICON for search input.
-/* Change the path of the Google Search Button icon into Expensify icon */
-function updateGoogleSearchIcon() {
-    const node = document.querySelector('.gsc-search-button.gsc-search-button-v2 svg path');
-    node.setAttribute(
-        'd',
-        'M8 1c3.9 0 7 3.1 7 7 0 1.4-.4 2.7-1.1 3.8l5.2 5.2c.6.6.6 1.5 0 2.1-.6.6-1.5.6-2.1 0l-5.2-5.2C10.7 14.6 9.4 15 8 15c-3.9 0-7-3.1-7-7s3.1-7 7-7zm0 3c2.2 0 4 1.8 4 4s-1.8 4-4 4-4-1.8-4-4 1.8-4 4-4z',
-    );
+/**
+ * Search the help site using the SearchHelpsite API.
+ *
+ * @param {string} query
+ */
+function searchHelpsite(query) {
+    const resultsContainer = document.getElementById('search-results');
+    if (!query.trim()) {
+        resultsContainer.innerHTML = '';
+        return;
+    }
+
+    resultsContainer.innerHTML = '';
+    resultsContainer.appendChild(cloneTemplate('search-loading-template'));
+
+    const isClassic = window.location.pathname.startsWith('/expensify-classic/');
+    const formData = new FormData();
+    formData.append('command', 'SearchHelpsite');
+    formData.append('query', query.trim());
+    if (isClassic) {
+        formData.append('platform', 'expensify-classic');
+    }
+
+    fetch(SEARCH_API_URL, {
+        method: 'POST',
+        body: formData,
+    })
+        .then((response) => response.json())
+        .then((data) => {
+            const results = (data.searchResults || []).filter((result) => !result.url.includes('/Unlisted/'));
+            resultsContainer.innerHTML = '';
+
+            if (results.length === 0) {
+                resultsContainer.appendChild(cloneTemplate('search-no-results-template'));
+                return;
+            }
+
+            results.forEach((result) => {
+                const item = cloneTemplate('search-result-item-template');
+                const link = item.querySelector('.search-result-item');
+                link.href = result.url;
+                link.querySelector('.search-result-title').textContent = getTitleFromURL(result.url);
+                const description = link.querySelector('.search-result-description');
+                if (result.description) {
+                    description.textContent = result.description;
+                } else {
+                    description.remove();
+                }
+                resultsContainer.appendChild(item);
+            });
+        })
+        .catch(() => {
+            resultsContainer.innerHTML = '';
+            resultsContainer.appendChild(cloneTemplate('search-error-template'));
+        });
 }
 
-// Need to wait up until page is load, so the svg viewBox can be changed
-// And the search label can be inserted
-window.addEventListener('load', () => {
-    changeSVGViewBoxGoogle();
+function initSearch() {
+    const searchForm = document.getElementById('search-form');
 
-    updateGoogleSearchIcon();
-
-    // Add required into the search input
-    const searchInput = document.getElementById('gsc-i-id1');
-    searchInput.setAttribute('required', '');
-
-    // Insert search label after the search input
-    const searchLabel = document.createElement('label');
-    searchLabel.classList.add('search-label');
-    searchLabel.innerHTML = 'Search for something...';
-    insertElementAfter(searchInput, searchLabel);
-});
+    if (searchForm) {
+        searchForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            searchHelpsite(document.getElementById('search-input').value);
+        });
+    }
+}
 
 const FIXED_HEADER_HEIGHT = 80;
 
@@ -235,37 +270,6 @@ mobileBreakpoint.addEventListener('change', handleBreakpointChange);
 // Initial check
 handleBreakpointChange();
 
-function selectNewExpensify(newExpensifyTab, newExpensifyContent, expensifyClassicTab, expensifyClassicContent) {
-    if (!expensifyClassicTab && !expensifyClassicContent) {
-        newExpensifyTab.classList.add('badge');
-    }
-    newExpensifyContent.classList.remove('hidden');
-
-    if (expensifyClassicTab && expensifyClassicContent) {
-        expensifyClassicContent.classList.add('hidden');
-    }
-    window.tocbot.refresh({
-        ...tocbotOptions,
-        contentSelector: '#new-expensify',
-    });
-}
-
-function selectExpensifyClassic(newExpensifyTab, newExpensifyContent, expensifyClassicTab, expensifyClassicContent) {
-    if (!newExpensifyContent && !newExpensifyTab) {
-        expensifyClassicTab.classList.add('badge');
-    }
-    expensifyClassicContent.classList.remove('hidden');
-
-    if (newExpensifyTab && newExpensifyContent) {
-        newExpensifyContent.classList.add('hidden');
-    }
-
-    window.tocbot.refresh({
-        ...tocbotOptions,
-        contentSelector: '#expensify-classic',
-    });
-}
-
 window.addEventListener('DOMContentLoaded', () => {
     injectFooterCopyright();
 
@@ -280,37 +284,14 @@ window.addEventListener('DOMContentLoaded', () => {
         buttonCloseSidebar.addEventListener('click', closeSidebar);
     }
 
-    const expensifyClassicTab = document.getElementById('platform-tab-expensify-classic');
-    const newExpensifyTab = document.getElementById('platform-tab-new-expensify');
-
-    const expensifyClassicContent = document.getElementById('expensify-classic');
-    const newExpensifyContent = document.getElementById('new-expensify');
-
-    let contentSelector = '.article-toc-content';
-    if (expensifyClassicContent) {
-        contentSelector = '#expensify-classic';
-        selectExpensifyClassic(newExpensifyTab, newExpensifyContent, expensifyClassicTab, expensifyClassicContent);
-    } else if (newExpensifyContent) {
-        contentSelector = '#new-expensify';
-        selectNewExpensify(newExpensifyTab, newExpensifyContent, expensifyClassicTab, expensifyClassicContent);
-    }
-
     if (window.tocbot) {
         window.tocbot.init({
             ...tocbotOptions,
-            contentSelector,
+            contentSelector: '.article-toc-content',
         });
     }
 
-    // eslint-disable-next-line es/no-optional-chaining
-    expensifyClassicTab?.addEventListener('click', () => {
-        selectExpensifyClassic(newExpensifyTab, newExpensifyContent, expensifyClassicTab, expensifyClassicContent);
-    });
-
-    // eslint-disable-next-line es/no-optional-chaining
-    newExpensifyTab?.addEventListener('click', () => {
-        selectNewExpensify(newExpensifyTab, newExpensifyContent, expensifyClassicTab, expensifyClassicContent);
-    });
+    initSearch();
 
     document.getElementById('header-button').addEventListener('click', toggleHeaderMenu);
 
@@ -373,42 +354,3 @@ window.addEventListener('hashchange', () => {
         behavior: 'smooth',
     });
 });
-
-// We need to pass the results from readyCallback to renderedCallback so we make two part callback here to customize the results from GCSE API
-const makeTwoPartCallback = () => {
-    let customResults = [];
-    const readyCallback = (name, q, promos, results, resultsDiv) => {
-        customResults = [];
-        results.forEach((result) => {
-            const {ogUrl, ogSiteName} = result.richSnippet.metatags;
-
-            const newOgSiteName = ogUrl.includes('expensify-classic') ? 'Expensify Classic' : 'New Expensify';
-
-            result.title = result.title.replace(`- ${ogSiteName}`, `• ${newOgSiteName}`);
-            result.titleNoFormatting = result.titleNoFormatting.replace(`- ${ogSiteName}`, `• ${newOgSiteName}`);
-            if (!result.title.endsWith(` • ${newOgSiteName}`)) {
-                result.title = result.title + ` • ${newOgSiteName}`;
-            }
-            customResults.push(result);
-        });
-    };
-    const renderedCallback = (name, q, promos, results) => {
-        for (let i = 0; i < results.length; ++i) {
-            const div = results[i];
-            const result = customResults[i];
-            const titleElement = div.querySelector('a.gs-title');
-            titleElement.innerHTML = result.title;
-        }
-    };
-    return {readyCallback, renderedCallback};
-};
-
-const {readyCallback: webResultsReadyCallback, renderedCallback: webResultsRenderedCallback} = makeTwoPartCallback();
-
-window.__gcse || (window.__gcse = {});
-window.__gcse.searchCallbacks = {
-    web: {
-        ready: webResultsReadyCallback,
-        rendered: webResultsRenderedCallback,
-    },
-};

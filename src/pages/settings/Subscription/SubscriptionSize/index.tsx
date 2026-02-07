@@ -1,15 +1,19 @@
 import React, {useEffect} from 'react';
 import DelegateNoAccessWrapper from '@components/DelegateNoAccessWrapper';
+import FullScreenLoadingIndicator from '@components/FullscreenLoadingIndicator';
 import HeaderWithBackButton from '@components/HeaderWithBackButton';
 import ScreenWrapper from '@components/ScreenWrapper';
 import useLocalize from '@hooks/useLocalize';
 import useOnyx from '@hooks/useOnyx';
+import usePrivateSubscription from '@hooks/usePrivateSubscription';
 import useSubStep from '@hooks/useSubStep';
 import type {SubStepProps} from '@hooks/useSubStep/types';
 import {clearDraftValues} from '@libs/actions/FormActions';
 import Navigation from '@libs/Navigation/Navigation';
 import type {PlatformStackScreenProps} from '@libs/Navigation/PlatformStackNavigation/types';
+import {isSubscriptionTypeOfInvoicing} from '@libs/SubscriptionUtils';
 import type {SettingsNavigatorParamList} from '@navigation/types';
+import NotFoundPage from '@pages/ErrorPage/NotFoundPage';
 import {updateSubscriptionSize} from '@userActions/Subscription';
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
@@ -23,7 +27,7 @@ const bodyContent: Array<React.ComponentType<SubStepProps>> = [Size, Confirmatio
 type SubscriptionSizePageProps = PlatformStackScreenProps<SettingsNavigatorParamList, typeof SCREENS.SETTINGS.SUBSCRIPTION.SIZE>;
 
 function SubscriptionSizePage({route}: SubscriptionSizePageProps) {
-    const [privateSubscription] = useOnyx(ONYXKEYS.NVP_PRIVATE_SUBSCRIPTION, {canBeMissing: false});
+    const privateSubscription = usePrivateSubscription();
     const [subscriptionSizeFormDraft] = useOnyx(ONYXKEYS.FORMS.SUBSCRIPTION_SIZE_FORM_DRAFT, {canBeMissing: false});
     const {translate} = useLocalize();
     const canChangeSubscriptionSize = !!(route.params?.canChangeSize ?? 1);
@@ -52,9 +56,17 @@ function SubscriptionSizePage({route}: SubscriptionSizePageProps) {
         [],
     );
 
+    if (isSubscriptionTypeOfInvoicing(privateSubscription?.type)) {
+        return <NotFoundPage />;
+    }
+
+    if (!privateSubscription) {
+        return <FullScreenLoadingIndicator />;
+    }
+
     return (
         <ScreenWrapper
-            testID={SubscriptionSizePage.displayName}
+            testID="SubscriptionSizePage"
             includeSafeAreaPaddingBottom={false}
             shouldEnablePickerAvoiding={false}
             shouldEnableMaxHeight
@@ -74,7 +86,5 @@ function SubscriptionSizePage({route}: SubscriptionSizePageProps) {
         </ScreenWrapper>
     );
 }
-
-SubscriptionSizePage.displayName = 'SubscriptionSizePage';
 
 export default SubscriptionSizePage;

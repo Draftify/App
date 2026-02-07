@@ -2,12 +2,10 @@ import React from 'react';
 import useStyleUtils from '@hooks/useStyleUtils';
 import useTheme from '@hooks/useTheme';
 import createPlatformStackNavigator from '@libs/Navigation/PlatformStackNavigation/createPlatformStackNavigator';
-import {InternalPlatformAnimations} from '@libs/Navigation/PlatformStackNavigation/navigationOptions/animation';
+import Animations, {InternalPlatformAnimations} from '@libs/Navigation/PlatformStackNavigation/navigationOptions/animation';
 import type {PublicScreensParamList} from '@navigation/types';
 import ConnectionCompletePage from '@pages/ConnectionCompletePage';
 import LogInWithShortLivedAuthTokenPage from '@pages/LogInWithShortLivedAuthTokenPage';
-import AppleSignInDesktopPage from '@pages/signin/AppleSignInDesktopPage';
-import GoogleSignInDesktopPage from '@pages/signin/GoogleSignInDesktopPage';
 import SAMLSignInPage from '@pages/signin/SAMLSignInPage';
 import SignInPage from '@pages/signin/SignInPage';
 import UnlinkLoginPage from '@pages/UnlinkLoginPage';
@@ -27,10 +25,15 @@ function PublicScreens() {
     const StyleUtils = useStyleUtils();
     return (
         <RootStack.Navigator screenOptions={defaultScreenOptions}>
-            {/* The structure for the HOME route has to be the same in public and auth screens. That's why the name for SignInPage is REPORTS_SPLIT_NAVIGATOR. */}
+            {/* The structure for the HOME route has to be the same in public and auth screens. That's why the name for SignInPage is SCREENS.HOME. */}
             <RootStack.Screen
-                name={NAVIGATORS.REPORTS_SPLIT_NAVIGATOR}
-                options={defaultScreenOptions}
+                name={SCREENS.HOME}
+                options={{
+                    ...defaultScreenOptions,
+                    // If you want to change this, make sure there aren't any animation bugs when signing out.
+                    // This was put here to prevent excessive animations when resetting the navigation state in `resetNavigationState`
+                    animation: Animations.NONE,
+                }}
                 component={SignInPage}
             />
             <RootStack.Screen
@@ -55,15 +58,8 @@ function PublicScreens() {
                 component={UnlinkLoginPage}
             />
             <RootStack.Screen
-                name={SCREENS.SIGN_IN_WITH_APPLE_DESKTOP}
-                component={AppleSignInDesktopPage}
-            />
-            <RootStack.Screen
-                name={SCREENS.SIGN_IN_WITH_GOOGLE_DESKTOP}
-                component={GoogleSignInDesktopPage}
-            />
-            <RootStack.Screen
                 name={SCREENS.SAML_SIGN_IN}
+                options={{gestureEnabled: false}}
                 component={SAMLSignInPage}
             />
             <RootStack.Screen
@@ -93,7 +89,5 @@ function PublicScreens() {
         </RootStack.Navigator>
     );
 }
-
-PublicScreens.displayName = 'PublicScreens';
 
 export default PublicScreens;

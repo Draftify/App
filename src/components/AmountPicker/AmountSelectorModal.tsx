@@ -1,10 +1,10 @@
 import {useFocusEffect} from '@react-navigation/native';
 import React, {useCallback, useRef, useState} from 'react';
 import {View} from 'react-native';
-import AmountForm from '@components/AmountForm';
 import Button from '@components/Button';
 import HeaderWithBackButton from '@components/HeaderWithBackButton';
 import Modal from '@components/Modal';
+import NumberWithSymbolForm from '@components/NumberWithSymbolForm';
 import ScreenWrapper from '@components/ScreenWrapper';
 import ScrollView from '@components/ScrollView';
 import type {BaseTextInputRef} from '@components/TextInput/BaseTextInput/types';
@@ -48,12 +48,11 @@ function AmountSelectorModal({value, description = '', onValueSelected, isVisibl
             onClose={onClose}
             onModalHide={onClose}
             enableEdgeToEdgeBottomSafeAreaPadding
-            shouldUseReanimatedModal
         >
             <ScreenWrapper
                 enableEdgeToEdgeBottomSafeAreaPadding
                 includePaddingTop={false}
-                testID={AmountSelectorModal.displayName}
+                testID="AmountSelectorModal"
                 shouldEnableMaxHeight
             >
                 <HeaderWithBackButton
@@ -65,7 +64,7 @@ function AmountSelectorModal({value, description = '', onValueSelected, isVisibl
                     addBottomSafeAreaPadding
                 >
                     <View style={styles.flex1}>
-                        <AmountForm
+                        <NumberWithSymbolForm
                             // eslint-disable-next-line react/jsx-props-no-spreading
                             {...rest}
                             value={currentValue}
@@ -86,7 +85,5 @@ function AmountSelectorModal({value, description = '', onValueSelected, isVisibl
         </Modal>
     );
 }
-
-AmountSelectorModal.displayName = 'AmountSelectorModal';
 
 export default AmountSelectorModal;

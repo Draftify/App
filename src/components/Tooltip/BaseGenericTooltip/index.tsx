@@ -1,14 +1,12 @@
-/* eslint-disable react-compiler/react-compiler */
-import React, {useContext, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import ReactDOM from 'react-dom';
 import {View} from 'react-native';
 import Animated, {useAnimatedStyle} from 'react-native-reanimated';
 import AnimatedPressableWithoutFeedback from '@components/AnimatedPressableWithoutFeedback';
 import TransparentOverlay from '@components/AutoCompleteSuggestions/AutoCompleteSuggestionsPortal/TransparentOverlay/TransparentOverlay';
-import {PopoverContext} from '@components/PopoverProvider';
+import {usePopoverActions} from '@components/PopoverProvider';
 import Text from '@components/Text';
 import useStyleUtils from '@hooks/useStyleUtils';
-import {parseFSAttributes} from '@libs/Fullstory';
 import CONST from '@src/CONST';
 import textRef from '@src/types/utils/textRef';
 import viewRef from '@src/types/utils/viewRef';
@@ -55,7 +53,7 @@ function BaseGenericTooltip({
     const rootWrapper = useRef<HTMLDivElement>(null);
 
     const StyleUtils = useStyleUtils();
-    const {setActivePopoverExtraAnchorRef} = useContext(PopoverContext);
+    const {setActivePopoverExtraAnchorRef} = usePopoverActions();
 
     useEffect(() => {
         if (!isEducationTooltip) {
@@ -124,21 +122,12 @@ function BaseGenericTooltip({
         return StyleUtils.getTooltipAnimatedStyles({tooltipContentWidth: contentMeasuredWidth, tooltipWrapperHeight: wrapperMeasuredHeight, currentSize: animation});
     });
 
-    /**
-     * Extracts values from the non-scraped attribute WEB_PROP_ATTR at build time
-     * to ensure necessary properties are available for further processing.
-     * Reevaluates "fs-class" to dynamically apply styles or behavior based on
-     * updated attribute values.
-     */
-    useLayoutEffect(parseFSAttributes, []);
-
     let content;
     if (renderTooltipContent) {
         content = (
             <View
                 ref={viewRef(contentRef)}
-                fsClass={CONST.FULL_STORY.UNMASK}
-                testID={CONST.FULL_STORY.UNMASK}
+                fsClass={CONST.FULLSTORY.CLASS.UNMASK}
             >
                 {renderTooltipContent()}
             </View>
@@ -148,8 +137,7 @@ function BaseGenericTooltip({
             <Text
                 numberOfLines={numberOfLines}
                 style={textStyle}
-                fsClass={CONST.FULL_STORY.UNMASK}
-                testID={CONST.FULL_STORY.UNMASK}
+                fsClass={CONST.FULLSTORY.CLASS.UNMASK}
             >
                 <Text
                     style={textStyle}

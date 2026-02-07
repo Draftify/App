@@ -2,20 +2,23 @@ import {fireEvent, screen} from '@testing-library/react-native';
 import {Str} from 'expensify-common';
 import {Linking} from 'react-native';
 import Onyx from 'react-native-onyx';
-import type {ConnectOptions, OnyxKey} from 'react-native-onyx/dist/types';
+import type {ConnectOptions, OnyxEntry, OnyxKey} from 'react-native-onyx/dist/types';
 import type {ApiCommand, ApiRequestCommandParameters} from '@libs/API/types';
+import DateUtils from '@libs/DateUtils';
 import {formatPhoneNumberWithCountryCode} from '@libs/LocalePhoneNumber';
-import {translateLocal} from '@libs/Localize';
+import {translate} from '@libs/Localize';
 import Pusher from '@libs/Pusher';
 import PusherConnectionManager from '@libs/PusherConnectionManager';
 import CONFIG from '@src/CONFIG';
 import CONST from '@src/CONST';
+import IntlStore from '@src/languages/IntlStore';
+import type {TranslationParameters, TranslationPaths} from '@src/languages/types';
 import * as Session from '@src/libs/actions/Session';
 import HttpUtils from '@src/libs/HttpUtils';
 import * as NumberUtils from '@src/libs/NumberUtils';
 import ONYXKEYS from '@src/ONYXKEYS';
 import appSetup from '@src/setup';
-import type {Response as OnyxResponse, PersonalDetails, Report} from '@src/types/onyx';
+import type {DismissedProductTraining, Response as OnyxResponse, PersonalDetails, Report, StripeCustomerID} from '@src/types/onyx';
 import waitForBatchedUpdates from './waitForBatchedUpdates';
 import waitForBatchedUpdatesWithAct from './waitForBatchedUpdatesWithAct';
 
@@ -44,6 +47,13 @@ function formatPhoneNumber(phoneNumber: string) {
     return formatPhoneNumberWithCountryCode(phoneNumber, 1);
 }
 
+const STRIPE_CUSTOMER_ID: OnyxEntry<StripeCustomerID> = {
+    paymentMethodID: '1',
+    intentsID: '2',
+    currency: 'USD',
+    status: 'authentication_required',
+};
+
 function setupApp() {
     beforeAll(() => {
         Linking.setInitialURL('https://new.expensify.com/');
@@ -57,6 +67,59 @@ function setupApp() {
             authEndpoint: `${CONFIG.EXPENSIFY.DEFAULT_API_ROOT}api/AuthenticatePusher?`,
         });
     });
+}
+
+function getNvpDismissedProductTraining(): OnyxEntry<DismissedProductTraining> {
+    return {
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.ACCOUNT_SWITCHER]: {
+            timestamp: DateUtils.getDBTime(new Date().valueOf()),
+            dismissedMethod: 'click',
+        },
+        [CONST.MIGRATED_USER_WELCOME_MODAL]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.CONCIERGE_LHN_GBR]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.RENAME_SAVED_SEARCH]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.SCAN_TEST_TOOLTIP]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.SCAN_TEST_TOOLTIP_MANAGER]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.SCAN_TEST_CONFIRMATION]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.OUTSTANDING_FILTER]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.SCAN_TEST_DRIVE_CONFIRMATION]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.MULTI_SCAN_EDUCATIONAL_MODAL]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.CHANGE_POLICY_TRAINING_MODAL]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+        [CONST.PRODUCT_TRAINING_TOOLTIP_NAMES.GPS_TOOLTIP]: {
+            timestamp: '',
+            dismissedMethod: 'click',
+        },
+    };
 }
 
 function buildPersonalDetails(login: string, accountID: number, firstName = 'Test'): PersonalDetails {
@@ -176,7 +239,7 @@ function signInWithTestUser(accountID = 1, login = 'test@user.com', password = '
                 // Return a Promise that resolves with the mocked response
                 return Promise.resolve(mockedResponse);
             });
-            Session.signIn(password);
+            Session.signIn(password, undefined);
             return waitForBatchedUpdates();
         })
         .then(() => {
@@ -257,7 +320,9 @@ function getGlobalFetchMock(): typeof fetch {
     mockFetch.pause = () => (isPaused = true);
     mockFetch.resume = () => {
         isPaused = false;
-        queue.forEach(({resolve, input}) => resolve(getResponse(input)));
+        for (const {resolve, input} of queue) {
+            resolve(getResponse(input));
+        }
         return waitForBatchedUpdates();
     };
     mockFetch.fail = () => (shouldFail = true);
@@ -337,6 +402,16 @@ function assertFormDataMatchesObject(obj: Report, formData?: FormData) {
     }
 }
 
+/**
+ * A local version of translate that uses the current locale from IntlStore
+ * This is useful in tests where we don't have access to the full app context
+ * to provide the locale.
+ */
+function translateLocal<TPath extends TranslationPaths>(phrase: TPath, ...parameters: TranslationParameters<TPath>) {
+    const currentLocale = IntlStore.getCurrentLocale();
+    return translate(currentLocale, phrase, ...parameters);
+}
+
 function getNavigateToChatHintRegex(): RegExp {
     const hintTextPrefix = translateLocal('accessibilityHints.navigatesToChat');
     return new RegExp(hintTextPrefix, 'i');
@@ -363,6 +438,7 @@ function localeCompare(a: string, b: string): number {
 
 export type {MockFetch, FormData};
 export {
+    translateLocal,
     assertFormDataMatchesObject,
     buildPersonalDetails,
     buildTestReportComment,
@@ -380,4 +456,6 @@ export {
     getNavigateToChatHintRegex,
     formatPhoneNumber,
     localeCompare,
+    STRIPE_CUSTOMER_ID,
+    getNvpDismissedProductTraining,
 };

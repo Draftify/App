@@ -1,9 +1,11 @@
-import type {OnyxUpdate} from 'react-native-onyx';
+import type {OnyxKey, OnyxUpdate} from 'react-native-onyx';
 import Onyx from 'react-native-onyx';
+import {setIsOpenAppFailureModalOpen} from '@libs/actions/isOpenAppFailureModalOpen';
 import {
     deleteRequestsByIndices as deletePersistedRequestsByIndices,
     endRequestAndRemoveFromQueue as endPersistedRequestAndRemoveFromQueue,
     getAll as getAllPersistedRequests,
+    onInitialization as onPersistedRequestsInitialization,
     processNextRequest as processNextPersistedRequest,
     rollbackOngoingRequest as rollbackOngoingPersistedRequest,
     save as savePersistedRequest,
@@ -11,17 +13,19 @@ import {
 } from '@libs/actions/PersistedRequests';
 import {flushQueue, isEmpty} from '@libs/actions/QueuedOnyxUpdates';
 import {isClientTheLeader} from '@libs/ActiveClientManager';
+import {WRITE_COMMANDS} from '@libs/API/types';
 import Log from '@libs/Log';
 import {processWithMiddleware} from '@libs/Request';
 import RequestThrottle from '@libs/RequestThrottle';
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import type OnyxRequest from '@src/types/onyx/Request';
-import type {ConflictData} from '@src/types/onyx/Request';
+import type {AnyRequest, ConflictData} from '@src/types/onyx/Request';
 import {isOffline, onReconnection} from './NetworkStore';
 
 let shouldFailAllRequests: boolean;
-Onyx.connect({
+// Use connectWithoutView since this is for network data and don't affect to any UI
+Onyx.connectWithoutView({
     key: ONYXKEYS.NETWORK,
     callback: (network) => {
         if (!network) {
@@ -76,9 +80,10 @@ function flushOnyxUpdatesQueue() {
     return flushQueue();
 }
 
-let queueFlushedDataToStore: OnyxUpdate[] = [];
+let queueFlushedDataToStore: Array<OnyxUpdate<OnyxKey>> = [];
 
-Onyx.connect({
+// Use connectWithoutView since this is for network queue and don't affect to any UI
+Onyx.connectWithoutView({
     key: ONYXKEYS.QUEUE_FLUSHED_DATA,
     callback: (val) => {
         if (!val) {
@@ -88,7 +93,8 @@ Onyx.connect({
     },
 });
 
-function saveQueueFlushedData(...onyxUpdates: OnyxUpdate[]) {
+function saveQueueFlushedData(...onyxUpdates: Array<OnyxUpdate<OnyxKey>>) {
+    // @ts-expect-error - will be solved in https://github.com/Expensify/App/issues/73830
     const newValue = [...queueFlushedDataToStore, ...onyxUpdates];
     // eslint-disable-next-line rulesdir/prefer-actions-set-data
     return Onyx.set(ONYXKEYS.QUEUE_FLUSHED_DATA, newValue).then(() => {
@@ -164,9 +170,17 @@ function process(): Promise<void> {
             // Duplicate records don't need to be retried as they just mean the record already exists on the server
             if (error.name === CONST.ERROR.REQUEST_CANCELLED || error.message === CONST.ERROR.DUPLICATE_RECORD || shouldFailAllRequests) {
                 if (shouldFailAllRequests) {
-                    Onyx.update(requestToProcess.failureData ?? []);
+                    const onyxUpdates = [...((requestToProcess.failureData ?? []) as never), ...((requestToProcess.finallyData ?? []) as never)] as Array<OnyxUpdate<OnyxKey>>;
+                    Onyx.update(onyxUpdates);
                 }
                 Log.info("[SequentialQueue] Removing persisted request because it failed and doesn't need to be retried.", false, {error, request: requestToProcess});
+                endPersistedRequestAndRemoveFromQueue(requestToProcess);
+                sequentialQueueRequestThrottle.clear();
+                return process();
+            }
+            // For rate limiting errors (429) on ResendValidateCode, don't retry to prevent spam
+            if (error.message === CONST.ERROR.THROTTLED && requestToProcess.command === WRITE_COMMANDS.RESEND_VALIDATE_CODE) {
+                Onyx.update(requestToProcess.failureData ?? []);
                 endPersistedRequestAndRemoveFromQueue(requestToProcess);
                 sequentialQueueRequestThrottle.clear();
                 return process();
@@ -180,6 +194,9 @@ function process(): Promise<void> {
                     Log.info('[SequentialQueue] Removing persisted request because it failed too many times.', false, {error, request: requestToProcess});
                     endPersistedRequestAndRemoveFromQueue(requestToProcess);
                     sequentialQueueRequestThrottle.clear();
+                    if (requestToProcess.command === WRITE_COMMANDS.OPEN_APP) {
+                        setIsOpenAppFailureModalOpen(true);
+                    }
                     return process();
                 });
         });
@@ -227,7 +244,8 @@ function flush(shouldResetPromise = true) {
     }
 
     // Ensure persistedRequests are read from storage before proceeding with the queue
-    const connection = Onyx.connect({
+    // Use connectWithoutView since this is for network queue and don't affect to any UI
+    const connection = Onyx.connectWithoutView({
         key: ONYXKEYS.PERSISTED_REQUESTS,
         // We exceptionally opt out of reusing the connection here to avoid extra callback calls due to
         // an existing connection already made in PersistedRequests.ts.
@@ -294,14 +312,21 @@ function isPaused(): boolean {
     return isQueuePaused;
 }
 
+function getShouldFailAllRequests(): boolean {
+    return shouldFailAllRequests;
+}
+
 // Flush the queue when the connection resumes
 onReconnection(flush);
 
-function handleConflictActions(conflictAction: ConflictData, newRequest: OnyxRequest) {
+// Flush the queue when the persisted requests are initialized
+onPersistedRequestsInitialization(flush);
+
+function handleConflictActions<TKey extends OnyxKey>(conflictAction: ConflictData, newRequest: OnyxRequest<TKey>) {
     if (conflictAction.type === 'push') {
         savePersistedRequest(newRequest);
     } else if (conflictAction.type === 'replace') {
-        updatePersistedRequest(conflictAction.index, conflictAction.request ?? newRequest);
+        updatePersistedRequest(conflictAction.index, conflictAction.request ?? (newRequest as AnyRequest));
     } else if (conflictAction.type === 'delete') {
         deletePersistedRequestsByIndices(conflictAction.indices);
         if (conflictAction.pushNewRequest) {
@@ -315,12 +340,10 @@ function handleConflictActions(conflictAction: ConflictData, newRequest: OnyxReq
     }
 }
 
-function push(newRequest: OnyxRequest) {
-    const {checkAndFixConflictingRequest} = newRequest;
-
-    if (checkAndFixConflictingRequest) {
+function push<TKey extends OnyxKey>(newRequest: OnyxRequest<TKey>) {
+    if (newRequest.checkAndFixConflictingRequest) {
         const requests = getAllPersistedRequests();
-        const {conflictAction} = checkAndFixConflictingRequest(requests);
+        const {conflictAction} = newRequest.checkAndFixConflictingRequest(requests as Array<OnyxRequest<TKey>>);
         Log.info(`[SequentialQueue] Conflict action for command ${newRequest.command} - ${conflictAction.type}:`);
 
         // don't try to serialize a function.
@@ -328,21 +351,25 @@ function push(newRequest: OnyxRequest) {
         delete newRequest.checkAndFixConflictingRequest;
         handleConflictActions(conflictAction, newRequest);
     } else {
+        Log.info('[SequentialQueue] No conflict action. Adding request to Persisted Requests', false, {command: newRequest.command});
         // Add request to Persisted Requests so that it can be retried if it fails
         savePersistedRequest(newRequest);
     }
 
     // If we are offline we don't need to trigger the queue to empty as it will happen when we come back online
     if (isOffline()) {
+        Log.info('[SequentialQueue] Unable to push request due to offline status');
         return;
     }
 
     // If the queue is running this request will run once it has finished processing the current batch
     if (isSequentialQueueRunning) {
+        Log.info('[SequentialQueue] Queue is running. Will flush when the current request is finished.');
         isReadyPromise.then(() => flush(true));
         return;
     }
 
+    Log.info('[SequentialQueue] Queue is not running. Flushing the queue.');
     flush(true);
 }
 
@@ -377,6 +404,7 @@ function resetQueue(): void {
 export {
     flush,
     getCurrentRequest,
+    getShouldFailAllRequests,
     isPaused,
     isRunning,
     pause,

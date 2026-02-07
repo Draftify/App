@@ -4,24 +4,21 @@ import {render} from '@testing-library/react-native';
 import type {ReactElement} from 'react';
 import React from 'react';
 import ComposeProviders from '@components/ComposeProviders';
+import {EnvironmentProvider} from '@components/EnvironmentContext';
 import {LocaleContextProvider} from '@components/LocaleContextProvider';
 import OnyxListItemProvider from '@components/OnyxListItemProvider';
-import {EnvironmentProvider} from '@components/withEnvironment';
 import {CurrentReportIDContextProvider} from '@hooks/useCurrentReportID';
 import {SidebarOrderedReportsContextProvider} from '@hooks/useSidebarOrderedReports';
 import DateUtils from '@libs/DateUtils';
 import {buildParticipantsFromAccountIDs} from '@libs/ReportUtils';
-import ReportActionItemSingle from '@pages/home/report/ReportActionItemSingle';
-import SidebarLinksData from '@pages/home/sidebar/SidebarLinksData';
+import ReportActionItemSingle from '@pages/inbox/report/ReportActionItemSingle';
+import SidebarLinksData from '@pages/inbox/sidebar/SidebarLinksData';
 import CONST from '@src/CONST';
 import type {PersonalDetailsList, Policy, Report, ReportAction, TransactionViolation, ViolationName} from '@src/types/onyx';
 import type ReportActionName from '@src/types/onyx/ReportActionName';
 import waitForBatchedUpdatesWithAct from './waitForBatchedUpdatesWithAct';
 
 type MockedReportActionItemSingleProps = {
-    /** Determines if the avatar is displayed as a subscript (positioned lower than normal) */
-    shouldShowSubscriptAvatar?: boolean;
-
     /** Report for this action */
     report: Report;
 
@@ -136,12 +133,12 @@ function getFakeReport(participantAccountIDs = [1, 2], millisecondsInThePast = 0
 
     const participants = buildParticipantsFromAccountIDs(participantAccountIDs);
 
-    adminIDs.forEach((id) => {
+    for (const id of adminIDs) {
         participants[id] = {
             notificationPreference: 'always',
             role: CONST.REPORT.ROLE.ADMIN,
         };
-    });
+    }
 
     return {
         type: CONST.REPORT.TYPE.CHAT,
@@ -333,14 +330,13 @@ function internalRender(component: ReactElement) {
     }
 }
 
-function MockedReportActionItemSingle({shouldShowSubscriptAvatar = true, report, reportAction}: MockedReportActionItemSingleProps) {
+function MockedReportActionItemSingle({report, reportAction}: MockedReportActionItemSingleProps) {
     return (
         <ComposeProviders components={[OnyxListItemProvider, LocaleContextProvider, EnvironmentProvider, CurrentReportIDContextProvider]}>
             <ReportActionItemSingle
                 action={reportAction}
                 report={report}
                 showHeader
-                shouldShowSubscriptAvatar={shouldShowSubscriptAvatar}
                 hasBeenFlagged={false}
                 iouReport={undefined}
                 isHovered={false}
@@ -349,13 +345,12 @@ function MockedReportActionItemSingle({shouldShowSubscriptAvatar = true, report,
     );
 }
 
-function getDefaultRenderedReportActionItemSingle(shouldShowSubscriptAvatar = true, report?: Report, reportAction?: ReportAction) {
+function getDefaultRenderedReportActionItemSingle(report?: Report, reportAction?: ReportAction) {
     const currentReport = report ?? getFakeReport();
     const currentReportAction = reportAction ?? getFakeAdvancedReportAction();
 
     internalRender(
         <MockedReportActionItemSingle
-            shouldShowSubscriptAvatar={shouldShowSubscriptAvatar}
             report={currentReport}
             reportAction={currentReportAction}
         />,

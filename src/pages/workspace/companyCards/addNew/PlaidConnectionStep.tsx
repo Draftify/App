@@ -1,17 +1,16 @@
 import React, {useCallback, useEffect, useRef} from 'react';
-import {ActivityIndicator, InteractionManager, View} from 'react-native';
+import {InteractionManager, View} from 'react-native';
 import type {LinkSuccessMetadata} from 'react-native-plaid-link-sdk';
 import type {PlaidLinkOnSuccessMetadata} from 'react-plaid-link/src/types';
+import ActivityIndicator from '@components/ActivityIndicator';
 import FullPageOfflineBlockingView from '@components/BlockingViews/FullPageOfflineBlockingView';
 import HeaderWithBackButton from '@components/HeaderWithBackButton';
 import PlaidLink from '@components/PlaidLink';
 import ScreenWrapper from '@components/ScreenWrapper';
 import Text from '@components/Text';
-import useEnvironment from '@hooks/useEnvironment';
 import useLocalize from '@hooks/useLocalize';
 import useNetwork from '@hooks/useNetwork';
 import useOnyx from '@hooks/useOnyx';
-import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
 import {setAddNewCompanyCardStepAndData, setAssignCardStepAndData} from '@libs/actions/CompanyCards';
 import KeyboardShortcut from '@libs/KeyboardShortcut';
@@ -23,14 +22,12 @@ import {setPlaidEvent} from '@userActions/BankAccounts';
 import {importPlaidAccounts, openPlaidCompanyCardLogin} from '@userActions/Plaid';
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
-import type {CompanyCardFeed} from '@src/types/onyx';
+import type {CompanyCardFeedWithDomainID} from '@src/types/onyx';
 import {isEmptyObject} from '@src/types/utils/EmptyObject';
 
-function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID?: string}) {
-    const {isDevelopment} = useEnvironment();
+function PlaidConnectionStep({feed, policyID, onExit}: {feed?: CompanyCardFeedWithDomainID; policyID?: string; onExit?: () => void}) {
     const {translate} = useLocalize();
     const styles = useThemeStyles();
-    const theme = useTheme();
     const [addNewCard] = useOnyx(ONYXKEYS.ADD_NEW_COMPANY_CARD, {canBeMissing: true});
     const isUSCountry = addNewCard?.data?.selectedCountry === CONST.COUNTRY.US;
     const [isPlaidDisabled] = useOnyx(ONYXKEYS.IS_PLAID_DISABLED, {canBeMissing: true});
@@ -44,10 +41,7 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
     const {isOffline} = useNetwork();
     const domain = getDomainNameForPolicy(policyID);
 
-    // s77rt remove DEV lock
-    const shouldSelectStatementCloseDate = isDevelopment;
-
-    const isAuthenticatedWithPlaid = useCallback(() => !!plaidData?.bankAccounts?.length || !isEmptyObject(plaidData?.errors), [plaidData]);
+    const isAuthenticatedWithPlaid = useCallback(() => !!plaidData?.bankAccounts?.length || !isEmptyObject(plaidData?.errors), [plaidData?.bankAccounts?.length, plaidData?.errors]);
 
     /**
      * Blocks the keyboard shortcuts that can navigate
@@ -71,7 +65,9 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
      * Unblocks the keyboard shortcuts that can navigate
      */
     const unsubscribeToNavigationShortcuts = () => {
-        subscribedKeyboardShortcuts.current.forEach((unsubscribe) => unsubscribe());
+        for (const unsubscribe of subscribedKeyboardShortcuts.current) {
+            unsubscribe();
+        }
         subscribedKeyboardShortcuts.current = [];
     };
 
@@ -88,7 +84,7 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
         }
 
         // disabling this rule, as we want this to run only on the first render
-        // eslint-disable-next-line react-compiler/react-compiler, react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -134,10 +130,14 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
                                     addNewCard.data.selectedCountry,
                                     getDomainNameForPolicy(policyID),
                                     JSON.stringify(metadata?.accounts),
+                                    addNewCard.data.statementPeriodEnd,
+                                    addNewCard.data.statementPeriodEndDay,
+                                    '',
                                 );
+                                // eslint-disable-next-line @typescript-eslint/no-deprecated
                                 InteractionManager.runAfterInteractions(() => {
                                     setAssignCardStepAndData({
-                                        data: {
+                                        cardToAssign: {
                                             plaidAccessToken: publicToken,
                                             institutionId: plaidConnectedFeed,
                                             plaidConnectedFeedName,
@@ -149,7 +149,7 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
                                 return;
                             }
                             setAssignCardStepAndData({
-                                data: {
+                                cardToAssign: {
                                     plaidAccessToken: publicToken,
                                     institutionId: plaidConnectedFeed,
                                     plaidConnectedFeedName,
@@ -161,7 +161,7 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
                         }
 
                         setAddNewCompanyCardStepAndData({
-                            step: shouldSelectStatementCloseDate ? CONST.COMPANY_CARDS.STEP.SELECT_STATEMENT_CLOSE_DATE : CONST.COMPANY_CARDS.STEP.BANK_CONNECTION,
+                            step: CONST.COMPANY_CARDS.STEP.SELECT_STATEMENT_CLOSE_DATE,
                             data: {
                                 publicToken,
                                 plaidConnectedFeed,
@@ -180,7 +180,10 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
                     }}
                     // User prematurely exited the Plaid flow
                     // eslint-disable-next-line react/jsx-props-no-multi-spaces
-                    onExit={handleBackButtonPress}
+                    onExit={() => {
+                        onExit?.();
+                        handleBackButtonPress();
+                    }}
                 />
             );
         }
@@ -192,10 +195,7 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
         if (plaidData?.isLoading) {
             return (
                 <View style={[styles.flex1, styles.alignItemsCenter, styles.justifyContentCenter]}>
-                    <ActivityIndicator
-                        color={theme.spinner}
-                        size="large"
-                    />
+                    <ActivityIndicator size={CONST.ACTIVITY_INDICATOR_SIZE.LARGE} />
                 </View>
             );
         }
@@ -203,7 +203,7 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
 
     return (
         <ScreenWrapper
-            testID={PlaidConnectionStep.displayName}
+            testID="PlaidConnectionStep"
             enableEdgeToEdgeBottomSafeAreaPadding
             shouldEnablePickerAvoiding={false}
             shouldEnableMaxHeight
@@ -220,7 +220,5 @@ function PlaidConnectionStep({feed, policyID}: {feed?: CompanyCardFeed; policyID
         </ScreenWrapper>
     );
 }
-
-PlaidConnectionStep.displayName = 'PlaidConnectionStep';
 
 export default PlaidConnectionStep;

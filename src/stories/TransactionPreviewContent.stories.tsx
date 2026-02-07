@@ -1,7 +1,8 @@
-import type {InputType} from '@storybook/csf';
-import type {Meta, StoryFn} from '@storybook/react';
+import type {Meta, StoryFn} from '@storybook/react-webpack5';
 import React from 'react';
 import {View} from 'react-native';
+import type {InputType} from 'storybook/internal/csf';
+import type {ValueOf} from 'type-fest';
 import TransactionPreviewContent from '@components/ReportActionItem/TransactionPreview/TransactionPreviewContent';
 import type {TransactionPreviewContentProps} from '@components/ReportActionItem/TransactionPreview/types';
 import ThemeProvider from '@components/ThemeProvider';
@@ -27,7 +28,7 @@ const modifiedTransaction = ({category, tag, merchant = '', amount = 1000, hold 
         hold: hold ? 'true' : undefined,
     },
 });
-const iouReportWithModifiedType = (type: string) => ({...iouReportR14932, type});
+const iouReportWithModifiedType = (type: ValueOf<typeof CONST.REPORT.TYPE>) => ({...iouReportR14932, type});
 const actionWithModifiedPendingAction = (pendingAction: PendingAction) => ({...actionR14932, pendingAction});
 
 const disabledProperties = [

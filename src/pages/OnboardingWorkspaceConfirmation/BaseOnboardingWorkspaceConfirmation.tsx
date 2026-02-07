@@ -37,6 +37,8 @@ function BaseOnboardingWorkspaceConfirmation({shouldUseNativeStyles}: BaseOnboar
     const [onboardingPolicyID] = useOnyx(ONYXKEYS.ONBOARDING_POLICY_ID, {canBeMissing: true});
     const [onboardingAdminsChatReportID] = useOnyx(ONYXKEYS.ONBOARDING_ADMINS_CHAT_REPORT_ID, {canBeMissing: true});
     const {onboardingIsMediumOrLargerScreenWidth} = useResponsiveLayout();
+    const [introSelected] = useOnyx(ONYXKEYS.NVP_INTRO_SELECTED, {canBeMissing: true});
+    const [activePolicyID] = useOnyx(ONYXKEYS.NVP_ACTIVE_POLICY_ID, {canBeMissing: true});
     const {inputCallbackRef} = useAutoFocusInput();
 
     const [draftValues, draftValuesMetadata] = useOnyx(ONYXKEYS.FORMS.ONBOARDING_WORKSPACE_DETAILS_FORM_DRAFT, {canBeMissing: true});
@@ -49,7 +51,7 @@ function BaseOnboardingWorkspaceConfirmation({shouldUseNativeStyles}: BaseOnboar
     const defaultCurrency = draftValues?.currency ?? currentUserPersonalDetails?.localCurrencyCode ?? CONST.CURRENCY.USD;
 
     useEffect(() => {
-        setOnboardingErrorMessage('');
+        setOnboardingErrorMessage(null);
     }, []);
 
     const handleSubmit = useCallback(
@@ -63,7 +65,22 @@ function BaseOnboardingWorkspaceConfirmation({shouldUseNativeStyles}: BaseOnboar
             // We need `adminsChatReportID` for `completeOnboarding`, but at the same time, we don't want to call `createWorkspace` more than once.
             // If we have already created a workspace, we want to reuse the `onboardingAdminsChatReportID` and `onboardingPolicyID`.
             const {adminsChatReportID, policyID} = shouldCreateWorkspace
-                ? createWorkspace(undefined, true, name, generatePolicyID(), CONST.ONBOARDING_CHOICES.TRACK_WORKSPACE, currency, undefined, false)
+                ? createWorkspace({
+                      policyOwnerEmail: undefined,
+                      makeMeAdmin: true,
+                      policyName: name,
+                      policyID: generatePolicyID(),
+                      engagementChoice: CONST.ONBOARDING_CHOICES.TRACK_WORKSPACE,
+                      currency,
+                      file: undefined,
+                      shouldAddOnboardingTasks: false,
+                      introSelected,
+                      activePolicyID,
+                      currentUserAccountIDParam: currentUserPersonalDetails.accountID,
+                      currentUserEmailParam: currentUserPersonalDetails.email ?? '',
+                      shouldAddGuideWelcomeMessage: false,
+                      onboardingPurposeSelected,
+                  })
                 : {adminsChatReportID: onboardingAdminsChatReportID, policyID: onboardingPolicyID};
 
             if (shouldCreateWorkspace) {
@@ -73,7 +90,16 @@ function BaseOnboardingWorkspaceConfirmation({shouldUseNativeStyles}: BaseOnboar
             clearWorkspaceDetailsDraft();
             Navigation.navigate(ROUTES.ONBOARDING_WORKSPACE_INVITE.getRoute());
         },
-        [onboardingPurposeSelected, onboardingPolicyID, paidGroupPolicy, onboardingAdminsChatReportID],
+        [
+            onboardingPurposeSelected,
+            onboardingPolicyID,
+            paidGroupPolicy,
+            onboardingAdminsChatReportID,
+            activePolicyID,
+            currentUserPersonalDetails.accountID,
+            currentUserPersonalDetails.email,
+            introSelected,
+        ],
     );
 
     const validate = (values: FormOnyxValues<typeof ONYXKEYS.FORMS.ONBOARDING_WORKSPACE_DETAILS_FORM>) => {
@@ -85,7 +111,7 @@ function BaseOnboardingWorkspaceConfirmation({shouldUseNativeStyles}: BaseOnboar
         } else if ([...name].length > CONST.TITLE_CHARACTER_LIMIT) {
             // Uses the spread syntax to count the number of Unicode code points instead of the number of UTF-16
             // code units.
-            addErrorMessage(errors, 'name', translate('common.error.characterLimitExceedCounter', {length: [...name].length, limit: CONST.TITLE_CHARACTER_LIMIT}));
+            addErrorMessage(errors, 'name', translate('common.error.characterLimitExceedCounter', [...name].length, CONST.TITLE_CHARACTER_LIMIT));
         }
 
         if (!isRequiredFulfilled(values[INPUT_IDS.CURRENCY])) {
@@ -103,10 +129,13 @@ function BaseOnboardingWorkspaceConfirmation({shouldUseNativeStyles}: BaseOnboar
         <ScreenWrapper
             shouldEnableMaxHeight
             includeSafeAreaPaddingBottom
-            testID={BaseOnboardingWorkspaceConfirmation.displayName}
+            testID="BaseOnboardingWorkspaceConfirmation"
             style={[styles.defaultModalContainer, shouldUseNativeStyles && styles.pt8]}
         >
-            <HeaderWithBackButton progressBarPercentage={100} />
+            <HeaderWithBackButton
+                progressBarPercentage={100}
+                shouldDisplayHelpButton={false}
+            />
             <FormProvider
                 style={[styles.flexGrow1, onboardingIsMediumOrLargerScreenWidth && styles.mt5, onboardingIsMediumOrLargerScreenWidth ? styles.mh8 : styles.mh5]}
                 formID={ONYXKEYS.FORMS.ONBOARDING_WORKSPACE_DETAILS_FORM}
@@ -149,7 +178,5 @@ function BaseOnboardingWorkspaceConfirmation({shouldUseNativeStyles}: BaseOnboar
         </ScreenWrapper>
     );
 }
-
-BaseOnboardingWorkspaceConfirmation.displayName = 'BaseOnboardingWorkspaceConfirmation';
 
 export default BaseOnboardingWorkspaceConfirmation;

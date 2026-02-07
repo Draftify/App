@@ -4,14 +4,20 @@ import type {ValueOf} from 'type-fest';
 import type CONST from '@src/CONST';
 import type * as OnyxCommon from './OnyxCommon';
 
-/** Card statement close date */
-type CompanyCardStatementCloseDate = ValueOf<typeof CONST.COMPANY_CARDS.STATEMENT_CLOSE_DATE>;
-
 /** Card feed */
 type CompanyCardFeed = ValueOf<typeof CONST.COMPANY_CARD.FEED_BANK_NAME>;
 
+/** Company card feed with domain ID */
+type CompanyCardFeedWithDomainID = `${CompanyCardFeed}${typeof CONST.COMPANY_CARD.FEED_KEY_SEPARATOR}${string}`;
+
 /** Custom card feed with a number */
-type CompanyCardFeedWithNumber = CompanyCardFeed | `${CompanyCardFeed}${number}`;
+type CompanyCardFeedWithNumber = CompanyCardFeed | `${CompanyCardFeed}${number}` | CompanyCardFeedWithDomainID;
+
+/** Statement period end */
+type StatementPeriodEnd = Exclude<ValueOf<typeof CONST.COMPANY_CARDS.STATEMENT_CLOSE_DATE>, typeof CONST.COMPANY_CARDS.STATEMENT_CLOSE_DATE.CUSTOM_DAY_OF_MONTH>;
+
+/** Statement period end day */
+type StatementPeriodEndDay = number;
 
 /** Card feed provider */
 type CardFeedProvider =
@@ -58,17 +64,30 @@ type CustomCardFeedData = OnyxCommon.OnyxValueWithOfflineFeedback<{
     /** Preferred policy */
     preferredPolicy?: string;
 
+    /** Country associated with this feed (ISO 3166-1 alpha-2 code) */
+    country?: string;
+
     /** The id of the domain the feed relates to */
     domainID?: number;
 
     /** Specifies the format for the report title related to this card */
     reportTitleFormat?: string;
 
-    /** Indicates the day when the statement period for this card ends */
-    statementPeriodEndDay?: string;
+    /** Indicates the day when the statement period for this card ends.
+     * The BE returns a unified key which may hold either a preset value (string) or a custom day (integer)
+     */
+    statementPeriodEndDay?: StatementPeriodEnd | StatementPeriodEndDay;
 
     /** Plaid access token */
     plaidAccessToken?: string;
+
+    /** Field-specific error messages */
+    errorFields?: OnyxCommon.ErrorFields<'statementPeriodEndDay'>;
+
+    /**
+     * Collection of errors coming from BE
+     */
+    errors?: OnyxCommon.Errors;
 }>;
 
 /** Direct card feed data */
@@ -91,11 +110,21 @@ type DirectCardFeedData = OnyxCommon.OnyxValueWithOfflineFeedback<{
     /** Whether any actions are pending */
     pending?: boolean;
 
-    /** Indicates the day when the statement period for this card ends */
-    statementPeriodEndDay?: string;
+    /** Indicates the day when the statement period for this card ends.
+     * The BE returns a unified key which may hold either a preset value (string) or a custom day (integer)
+     */
+    statementPeriodEndDay?: StatementPeriodEnd | StatementPeriodEndDay;
 
     /** Plaid access token */
     plaidAccessToken?: string;
+
+    /** Field-specific error messages */
+    errorFields?: OnyxCommon.ErrorFields<'statementPeriodEndDay'>;
+
+    /**
+     * Collection of errors coming from BE
+     */
+    errors?: OnyxCommon.Errors;
 }>;
 
 /** Card feed data */
@@ -107,7 +136,44 @@ type CompanyFeeds = Partial<Record<CompanyCardFeed, CardFeedData>>;
 /** Custom feed names */
 type CompanyCardNicknames = Partial<Record<CompanyCardFeed, string>>;
 
-/** Card feeds model */
+/** Domain settings model */
+type DomainSettings = {
+    /** Domain settings */
+    settings: {
+        /** Whether logging in with SAML is enabled for the domain */
+        samlEnabled?: boolean;
+
+        /** Whether logging in with SAML is required for the domain */
+        samlRequired?: boolean;
+
+        /** Encrypted SCIM token, exists only when Okta is enabled for the domain by support */
+        oktaSCIM?: string;
+
+        /** Email to primary contact from the domain */
+        technicalContactEmail?: string;
+    };
+};
+
+/** Card feeds status */
+type CardFeedsStatus = {
+    /** Whether we are loading the data via the API */
+    isLoading?: boolean;
+
+    /** Collection of errors coming from BE */
+    errors?: OnyxCommon.Errors;
+};
+
+/**
+ * Collection of card feeds status by domain ID
+ */
+type CardFeedsStatusByDomainID = Record<number, CardFeedsStatus>;
+
+/**
+ * Collection of card feeds status by domain ID
+ */
+type WorkspaceCardFeedsStatus = Record<CompanyCardFeed, CardFeedsStatus>;
+
+/** Card feeds model, including domain settings */
 type CardFeeds = {
     /** Feed settings */
     settings: {
@@ -119,11 +185,18 @@ type CardFeeds = {
 
         /** Account details */
         oAuthAccountDetails?: Partial<Record<CompanyCardFeed, DirectCardFeedData>>;
-    };
 
-    /** Whether we are loading the data via the API */
-    isLoading?: boolean;
-};
+        /** Collection of card feeds status by domain ID */
+        cardFeedsStatus?: WorkspaceCardFeedsStatus;
+
+        /** Email address of the technical contact for the domain */
+        technicalContactEmail?: string;
+
+        /** Whether to use the technical contact's billing card */
+        useTechnicalContactBillingCard?: boolean;
+    };
+} & CardFeedsStatus &
+    DomainSettings;
 
 /** Data required to be sent to add a new card */
 type AddNewCardFeedData = {
@@ -135,6 +208,12 @@ type AddNewCardFeedData = {
 
     /** Name of the card */
     cardTitle: string;
+
+    /** Indicates the day (preset value) when the statement period for this card ends */
+    statementPeriodEnd?: StatementPeriodEnd;
+
+    /** Indicates the day (custom day) when the statement period for this card ends */
+    statementPeriodEndDay?: StatementPeriodEndDay;
 
     /** Selected bank */
     selectedBank: ValueOf<typeof CONST.COMPANY_CARDS.BANKS> | null;
@@ -182,6 +261,22 @@ type AddNewCompanyCardFeed = {
 /** Card fund ID */
 type FundID = number;
 
+/** Combined card feed type */
+type CombinedCardFeed = CustomCardFeedData &
+    Partial<DirectCardFeedData> & {
+        /** Custom feed name, originally coming from settings.companyCardNicknames */
+        customFeedName?: string;
+
+        /** Feed name */
+        feed: CompanyCardFeedWithNumber;
+
+        /** Card feed status */
+        status?: CardFeedsStatus;
+    };
+
+/** Card feeds combined by domain ID into one object */
+type CombinedCardFeeds = Record<CompanyCardFeedWithDomainID, CombinedCardFeed>;
+
 export default CardFeeds;
 export type {
     AddNewCardFeedStep,
@@ -192,9 +287,18 @@ export type {
     DirectCardFeedData,
     CardFeedProvider,
     CardFeedData,
+    CardFeedsStatus,
+    CardFeedsStatusByDomainID,
+    WorkspaceCardFeedsStatus,
     CompanyFeeds,
+    CompanyCardFeedWithDomainID,
+    CustomCardFeedData,
     CompanyCardNicknames,
     CompanyCardFeedWithNumber,
     FundID,
-    CompanyCardStatementCloseDate,
+    StatementPeriodEnd,
+    StatementPeriodEndDay,
+    DomainSettings,
+    CombinedCardFeed,
+    CombinedCardFeeds,
 };

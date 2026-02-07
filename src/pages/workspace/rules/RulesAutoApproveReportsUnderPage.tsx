@@ -10,11 +10,11 @@ import useAutoFocusInput from '@hooks/useAutoFocusInput';
 import useLocalize from '@hooks/useLocalize';
 import usePolicy from '@hooks/usePolicy';
 import useThemeStyles from '@hooks/useThemeStyles';
-import {convertToFrontendAmountAsString, getCurrencySymbol} from '@libs/CurrencyUtils';
+import {convertToFrontendAmountAsString} from '@libs/CurrencyUtils';
 import Navigation from '@libs/Navigation/Navigation';
 import type {PlatformStackScreenProps} from '@libs/Navigation/PlatformStackNavigation/types';
 import type {SettingsNavigatorParamList} from '@libs/Navigation/types';
-import {getWorkflowApprovalsUnavailable} from '@libs/PolicyUtils';
+import {getWorkflowApprovalsUnavailable, isPolicyFeatureEnabled} from '@libs/PolicyUtils';
 import AccessOrNotFoundWrapper from '@pages/workspace/AccessOrNotFoundWrapper';
 import {setPolicyAutomaticApprovalLimit} from '@userActions/Policy/Policy';
 import CONST from '@src/CONST';
@@ -33,19 +33,20 @@ function RulesAutoApproveReportsUnderPage({route}: RulesAutoApproveReportsUnderP
     const styles = useThemeStyles();
 
     const workflowApprovalsUnavailable = getWorkflowApprovalsUnavailable(policy);
+    const isWorkflowsEnabled = isPolicyFeatureEnabled(policy, CONST.POLICY.MORE_FEATURES.ARE_WORKFLOWS_ENABLED);
     const defaultValue = convertToFrontendAmountAsString(policy?.autoApproval?.limit ?? CONST.POLICY.AUTO_APPROVE_REPORTS_UNDER_DEFAULT_CENTS, policy?.outputCurrency);
 
     return (
         <AccessOrNotFoundWrapper
             policyID={route.params.policyID}
             accessVariants={[CONST.POLICY.ACCESS_VARIANTS.ADMIN, CONST.POLICY.ACCESS_VARIANTS.PAID]}
-            featureName={CONST.POLICY.MORE_FEATURES.ARE_RULES_ENABLED}
-            shouldBeBlocked={!policy?.shouldShowAutoApprovalOptions || workflowApprovalsUnavailable}
+            featureName={CONST.POLICY.MORE_FEATURES.ARE_WORKFLOWS_ENABLED}
+            shouldBeBlocked={isWorkflowsEnabled && (!policy?.shouldShowAutoApprovalOptions || workflowApprovalsUnavailable)}
         >
             <ScreenWrapper
                 enableEdgeToEdgeBottomSafeAreaPadding
                 shouldEnableMaxHeight
-                testID={RulesAutoApproveReportsUnderPage.displayName}
+                testID="RulesAutoApproveReportsUnderPage"
             >
                 <HeaderWithBackButton
                     title={translate('workspace.rules.expenseReportRules.autoApproveReportsUnderTitle')}
@@ -68,7 +69,7 @@ function RulesAutoApproveReportsUnderPage({route}: RulesAutoApproveReportsUnderP
                             label={translate('iou.amount')}
                             InputComponent={AmountForm}
                             inputID={INPUT_IDS.MAX_EXPENSE_AUTO_APPROVAL_AMOUNT}
-                            currency={getCurrencySymbol(policy?.outputCurrency ?? CONST.CURRENCY.USD)}
+                            currency={policy?.outputCurrency ?? CONST.CURRENCY.USD}
                             defaultValue={defaultValue}
                             isCurrencyPressable={false}
                             ref={inputCallbackRef}
@@ -81,7 +82,5 @@ function RulesAutoApproveReportsUnderPage({route}: RulesAutoApproveReportsUnderP
         </AccessOrNotFoundWrapper>
     );
 }
-
-RulesAutoApproveReportsUnderPage.displayName = 'RulesAutoApproveReportsUnderPage';
 
 export default RulesAutoApproveReportsUnderPage;

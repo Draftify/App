@@ -1,5 +1,5 @@
 import type {ForwardedRef, MouseEventHandler, KeyboardEvent as ReactKeyboardEvent} from 'react';
-import React, {forwardRef} from 'react';
+import React from 'react';
 import type {GestureResponderEvent, StyleProp, ViewStyle} from 'react-native';
 import {View} from 'react-native';
 import useStyleUtils from '@hooks/useStyleUtils';
@@ -7,78 +7,87 @@ import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
 import CONST from '@src/CONST';
 import type ChildrenProps from '@src/types/utils/ChildrenProps';
+import type WithSentryLabel from '@src/types/utils/SentryLabel';
 import Icon from './Icon';
 import * as Expensicons from './Icon/Expensicons';
+import type {PressableRef} from './Pressable/GenericPressable/types';
 import PressableWithFeedback from './Pressable/PressableWithFeedback';
 
-type CheckboxProps = Partial<ChildrenProps> & {
-    /** Whether checkbox is checked */
-    isChecked?: boolean;
+type CheckboxProps = Partial<ChildrenProps> &
+    WithSentryLabel & {
+        /** Whether checkbox is checked */
+        isChecked?: boolean;
 
-    /** Whether checkbox is in the indeterminate (“mixed”) state */
-    isIndeterminate?: boolean;
+        /** Whether checkbox is in the indeterminate (“mixed”) state */
+        isIndeterminate?: boolean;
 
-    /** A function that is called when the box/label is pressed */
-    onPress: () => void;
+        /** A function that is called when the box/label is pressed */
+        onPress: () => void;
 
-    /** Should the input be styled for errors  */
-    hasError?: boolean;
+        /** Should the input be styled for errors  */
+        hasError?: boolean;
 
-    /** Should the input be disabled  */
-    disabled?: boolean;
+        /** Should the input be disabled  */
+        disabled?: boolean;
 
-    /** Additional styles to add to checkbox button */
-    style?: StyleProp<ViewStyle>;
+        /** Additional styles to add to checkbox button */
+        style?: StyleProp<ViewStyle>;
 
-    /** Additional styles to add to checkbox container */
-    containerStyle?: StyleProp<ViewStyle>;
+        /** Additional styles to add to checkbox container */
+        containerStyle?: StyleProp<ViewStyle>;
 
-    /** Callback that is called when mousedown is triggered. */
-    onMouseDown?: MouseEventHandler;
+        /** Callback that is called when mousedown is triggered. */
+        onMouseDown?: MouseEventHandler;
 
-    /** The size of the checkbox container */
-    containerSize?: number;
+        /** The size of the checkbox container */
+        containerSize?: number;
 
-    /** The border radius of the checkbox container */
-    containerBorderRadius?: number;
+        /** The border radius of the checkbox container */
+        containerBorderRadius?: number;
 
-    /** The size of the caret (checkmark) */
-    caretSize?: number;
+        /** The size of the caret (checkmark) */
+        caretSize?: number;
 
-    /** An accessibility label for the checkbox */
-    accessibilityLabel: string;
+        /** An accessibility label for the checkbox */
+        accessibilityLabel: string;
 
-    /** stop propagation of the mouse down event */
-    shouldStopMouseDownPropagation?: boolean;
+        /** stop propagation of the mouse down event */
+        shouldStopMouseDownPropagation?: boolean;
 
-    /** Whether the checkbox should be selected when pressing Enter key */
-    shouldSelectOnPressEnter?: boolean;
+        /** Whether the checkbox should be selected when pressing Enter key */
+        shouldSelectOnPressEnter?: boolean;
 
-    /** Additional styles to add to checkbox wrapper */
-    wrapperStyle?: StyleProp<ViewStyle>;
-};
+        /** Additional styles to add to checkbox wrapper */
+        wrapperStyle?: StyleProp<ViewStyle>;
 
-function Checkbox(
-    {
-        isChecked = false,
-        isIndeterminate = false,
-        hasError = false,
-        disabled = false,
-        style,
-        containerStyle,
-        children = null,
-        onMouseDown,
-        containerSize = 20,
-        containerBorderRadius = 4,
-        caretSize = 14,
-        onPress,
-        accessibilityLabel,
-        shouldStopMouseDownPropagation,
-        shouldSelectOnPressEnter,
-        wrapperStyle,
-    }: CheckboxProps,
-    ref: ForwardedRef<View>,
-) {
+        /** Used to locate this view in end-to-end tests. */
+        testID?: string;
+
+        /** Reference to the outer element */
+        ref?: ForwardedRef<View>;
+    };
+
+function Checkbox({
+    isChecked = false,
+    isIndeterminate = false,
+    hasError = false,
+    disabled = false,
+    style,
+    containerStyle,
+    children = null,
+    onMouseDown,
+    containerSize = 20,
+    containerBorderRadius = 4,
+    caretSize = 14,
+    onPress,
+    accessibilityLabel,
+    shouldStopMouseDownPropagation,
+    shouldSelectOnPressEnter,
+    wrapperStyle,
+    testID,
+    ref,
+    sentryLabel,
+}: CheckboxProps) {
     const theme = useTheme();
     const styles = useThemeStyles();
     const StyleUtils = useStyleUtils();
@@ -109,6 +118,7 @@ function Checkbox(
 
     return (
         <PressableWithFeedback
+            testID={testID}
             disabled={disabled}
             onPress={firePressHandlerOnClick}
             onMouseDown={(e) => {
@@ -117,10 +127,13 @@ function Checkbox(
                 }
                 onMouseDown?.(e);
             }}
-            ref={ref}
+            ref={ref as PressableRef}
             style={[StyleUtils.getCheckboxPressableStyle(containerBorderRadius + 2), style]} // to align outline on focus, border-radius of pressable should be 2px more than Checkbox
             onKeyDown={handleSpaceOrEnterKey}
             role={CONST.ROLE.CHECKBOX}
+            accessibilityState={{
+                checked: isIndeterminate ? 'mixed' : isChecked,
+            }}
             /*  true  → checked
                 false → unchecked
                 mixed → indeterminate  */
@@ -128,6 +141,8 @@ function Checkbox(
             accessibilityLabel={accessibilityLabel}
             pressDimmingValue={1}
             wrapperStyle={wrapperStyle}
+            sentryLabel={sentryLabel}
+            shouldUseAutoHitSlop
         >
             {children ?? (
                 <View
@@ -155,8 +170,6 @@ function Checkbox(
     );
 }
 
-Checkbox.displayName = 'Checkbox';
-
-export default forwardRef(Checkbox);
+export default Checkbox;
 
 export type {CheckboxProps};

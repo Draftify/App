@@ -1,12 +1,13 @@
 import {Str} from 'expensify-common';
 import React, {useMemo} from 'react';
 import type {StyleProp, TextStyle} from 'react-native';
-import type {CustomRendererProps, TBlock} from 'react-native-render-html';
+import type {CustomRendererProps, TPhrasing, TText} from 'react-native-render-html';
 import {TNodeChildrenRenderer} from 'react-native-render-html';
 import AnchorForAttachmentsOnly from '@components/AnchorForAttachmentsOnly';
 import AnchorForCommentsOnly from '@components/AnchorForCommentsOnly';
 import * as HTMLEngineUtils from '@components/HTMLEngineProvider/htmlEngineUtils';
 import Text from '@components/Text';
+import TextLink from '@components/TextLink';
 import useEnvironment from '@hooks/useEnvironment';
 import useHover from '@hooks/useHover';
 import useStyleUtils from '@hooks/useStyleUtils';
@@ -16,7 +17,7 @@ import {getInternalExpensifyPath, getInternalNewExpensifyPath, openLink} from '@
 import tryResolveUrlFromApiRoot from '@libs/tryResolveUrlFromApiRoot';
 import CONST from '@src/CONST';
 
-type AnchorRendererProps = CustomRendererProps<TBlock> & {
+type AnchorRendererProps = CustomRendererProps<TText | TPhrasing> & {
     /** Key of the element */
     key?: string;
 };
@@ -66,9 +67,31 @@ function AnchorRenderer({tnode, style, key}: AnchorRendererProps) {
                 styles.link,
                 {
                     fontSize: HTMLEngineUtils.getFontSizeOfRBRChild(tnode),
-                    textDecorationLine: 'underline',
                 },
             ];
+        }
+
+        if (HTMLEngineUtils.isChildOfLabelText(tnode)) {
+            linkStyle = [styles.textLabel, styles.textLineHeightNormal, styles.link];
+        }
+
+        // Special handling for links in label font to maintain consistent font size
+        if (HTMLEngineUtils.isChildOfMutedTextLabel(tnode)) {
+            linkStyle = [styles.mutedNormalTextLabel, styles.link];
+        }
+
+        // Special handling for links in extra small font to maintain consistent font size
+        if (HTMLEngineUtils.isChildOfMutedTextXS(tnode)) {
+            linkStyle = [styles.textExtraSmallSupporting, styles.link];
+        }
+
+        // Special handling for links in micro font to maintain consistent font size
+        if (HTMLEngineUtils.isChildOfMutedTextMicro(tnode)) {
+            linkStyle = [styles.textMicroSupporting, styles.link];
+        }
+
+        if (HTMLEngineUtils.isChildOfAlertText(tnode)) {
+            linkStyle = [styles.formError, styles.mb0, styles.link];
         }
 
         if (tnode.classes.includes('no-style-link')) {
@@ -80,13 +103,13 @@ function AnchorRenderer({tnode, style, key}: AnchorRendererProps) {
         }
 
         return (
-            <Text
+            <TextLink
                 style={linkStyle}
                 onPress={() => openLink(attrHref, environmentURL, isAttachment)}
-                suppressHighlighting
+                suppressDefaultStyle
             >
                 <TNodeChildrenRenderer tnode={tnode} />
-            </Text>
+            </TextLink>
         );
     }
 
@@ -160,7 +183,5 @@ function AnchorRenderer({tnode, style, key}: AnchorRendererProps) {
         </AnchorForCommentsOnly>
     );
 }
-
-AnchorRenderer.displayName = 'AnchorRenderer';
 
 export default AnchorRenderer;

@@ -1,6 +1,6 @@
 import {PortalProvider} from '@gorhom/portal';
 import * as NativeNavigation from '@react-navigation/native';
-import {render, screen} from '@testing-library/react-native';
+import {act, render, screen} from '@testing-library/react-native';
 import React from 'react';
 import Onyx from 'react-native-onyx';
 import ComposeProviders from '@components/ComposeProviders';
@@ -9,15 +9,17 @@ import {LocaleContextProvider} from '@components/LocaleContextProvider';
 import OnyxListItemProvider from '@components/OnyxListItemProvider';
 import OptionsListContextProvider from '@components/OptionListContextProvider';
 import ScreenWrapper from '@components/ScreenWrapper';
-import {translateLocal} from '@libs/Localize';
+import Parser from '@libs/Parser';
 import {getIOUActionForReportID} from '@libs/ReportActionsUtils';
-import PureReportActionItem from '@pages/home/report/PureReportActionItem';
+import PureReportActionItem from '@pages/inbox/report/PureReportActionItem';
 import CONST from '@src/CONST';
+import type {TranslationPaths} from '@src/languages/types';
 import * as ReportActionUtils from '@src/libs/ReportActionsUtils';
 import ONYXKEYS from '@src/ONYXKEYS';
-import type {ReportAction} from '@src/types/onyx';
+import type {Policy, ReportAction} from '@src/types/onyx';
 import type {OriginalMessage} from '@src/types/onyx/ReportAction';
 import type ReportActionName from '@src/types/onyx/ReportActionName';
+import {translateLocal} from '../utils/TestHelper';
 import waitForBatchedUpdatesWithAct from '../utils/waitForBatchedUpdatesWithAct';
 import wrapOnyxWithWaitForBatchedUpdates from '../utils/wrapOnyxWithWaitForBatchedUpdates';
 
@@ -53,22 +55,27 @@ describe('PureReportActionItem', () => {
         jest.spyOn(ReportActionUtils, 'getIOUActionForReportID').mockImplementation(getIOUActionForReportID);
     });
 
-    beforeEach(() => {
+    beforeEach(async () => {
         wrapOnyxWithWaitForBatchedUpdates(Onyx);
-        return Onyx.merge(ONYXKEYS.NETWORK, {isOffline: false}).then(() =>
-            Onyx.merge(`${ONYXKEYS.PERSONAL_DETAILS_LIST}`, {
+        await act(async () => {
+            await Onyx.merge(ONYXKEYS.NETWORK, {isOffline: false});
+            await Onyx.merge(`${ONYXKEYS.PERSONAL_DETAILS_LIST}`, {
                 [ACTOR_ACCOUNT_ID]: {
                     accountID: ACTOR_ACCOUNT_ID,
                     avatar: 'https://d2k5nsl2zxldvw.cloudfront.net/images/avatars/default-avatar_9.png',
                     displayName: actorEmail,
                     login: actorEmail,
                 },
-            }),
-        );
+            });
+        });
+        await waitForBatchedUpdatesWithAct();
     });
 
-    afterEach(() => {
-        Onyx.clear();
+    afterEach(async () => {
+        await act(async () => {
+            await Onyx.clear();
+        });
+        await waitForBatchedUpdatesWithAct();
     });
 
     function renderItemWithAction(action: ReportAction) {
@@ -80,6 +87,7 @@ describe('PureReportActionItem', () => {
                             <PureReportActionItem
                                 allReports={undefined}
                                 policies={undefined}
+                                personalPolicyID={undefined}
                                 report={undefined}
                                 reportActions={[]}
                                 parentReportAction={undefined}
@@ -92,6 +100,8 @@ describe('PureReportActionItem', () => {
                                 taskReport={undefined}
                                 linkedReport={undefined}
                                 iouReportOfLinkedReport={undefined}
+                                currentUserAccountID={ACTOR_ACCOUNT_ID}
+                                allTransactionDrafts={undefined}
                             />
                         </PortalProvider>
                     </ScreenWrapper>
@@ -101,40 +111,64 @@ describe('PureReportActionItem', () => {
     }
 
     describe('Automatic actions', () => {
-        it('APPROVED action via workspace rules', async () => {
-            const action = createReportAction(CONST.REPORT.ACTIONS.TYPE.APPROVED, {automaticAction: true});
+        const testCases = [
+            {
+                testTitle: 'APPROVED action via workspace rules',
+                actionName: CONST.REPORT.ACTIONS.TYPE.APPROVED,
+                originalMessageExtras: {automaticAction: true},
+                translationKey: 'iou.automaticallyApproved',
+            },
+            {
+                testTitle: 'FORWARDED action via workspace rules',
+                actionName: CONST.REPORT.ACTIONS.TYPE.FORWARDED,
+                originalMessageExtras: {automaticAction: true},
+                translationKey: 'iou.automaticallyForwarded',
+            },
+            {
+                testTitle: 'SUBMITTED action via harvesting',
+                actionName: CONST.REPORT.ACTIONS.TYPE.SUBMITTED,
+                originalMessageExtras: {harvesting: true},
+                translationKey: 'iou.automaticallySubmitted',
+            },
+            {
+                testTitle: 'SUBMITTED_AND_CLOSED action via harvesting',
+                actionName: CONST.REPORT.ACTIONS.TYPE.SUBMITTED_AND_CLOSED,
+                originalMessageExtras: {harvesting: true},
+                translationKey: 'iou.automaticallySubmitted',
+            },
+        ];
+
+        const parseTextWithTrailingLink = (translatedText: string) => {
+            const match = translatedText.match(/^(.*?)(<a[^>]*>)(.*?)(<\/a>)$/);
+            if (!match) {
+                return null;
+            }
+            const [, textBeforeLink, , linkText] = match;
+            return {textBeforeLink, linkText};
+        };
+
+        it.each(testCases)('$testTitle', async ({actionName, originalMessageExtras, translationKey}) => {
+            const action = createReportAction(actionName, originalMessageExtras);
             renderItemWithAction(action);
             await waitForBatchedUpdatesWithAct();
 
-            expect(screen.getByText(actorEmail)).toBeOnTheScreen();
-            expect(screen.getByText(translateLocal('iou.automaticallyApproved'))).toBeOnTheScreen();
+            expect(screen.getByText(CONST.CONCIERGE_DISPLAY_NAME)).toBeOnTheScreen();
+            const parsedText = parseTextWithTrailingLink(translateLocal(translationKey as TranslationPaths));
+            if (!parsedText) {
+                throw new Error('Text cannot be parsed, translation failed');
+            }
+
+            const {textBeforeLink, linkText} = parsedText;
+            expect(screen.getByText(textBeforeLink)).toBeOnTheScreen();
+            expect(screen.getByText(linkText)).toBeOnTheScreen();
         });
 
-        it('FORWARDED action via workspace rules', async () => {
-            const action = createReportAction(CONST.REPORT.ACTIONS.TYPE.FORWARDED, {automaticAction: true});
+        it('CREATED_REPORT_FOR_UNAPPROVED_TRANSACTIONS action', async () => {
+            const action = createReportAction(CONST.REPORT.ACTIONS.TYPE.CREATED_REPORT_FOR_UNAPPROVED_TRANSACTIONS, {originalID: 'original-report-id'});
             renderItemWithAction(action);
             await waitForBatchedUpdatesWithAct();
 
-            expect(screen.getByText(actorEmail)).toBeOnTheScreen();
-            expect(screen.getByText(translateLocal('iou.automaticallyForwarded'))).toBeOnTheScreen();
-        });
-
-        it('SUBMITTED action via harvesting', async () => {
-            const action = createReportAction(CONST.REPORT.ACTIONS.TYPE.SUBMITTED, {harvesting: true});
-            renderItemWithAction(action);
-            await waitForBatchedUpdatesWithAct();
-
-            expect(screen.getByText(actorEmail)).toBeOnTheScreen();
-            expect(screen.getByText(translateLocal('iou.automaticallySubmitted'))).toBeOnTheScreen();
-        });
-
-        it('SUBMITTED_AND_CLOSED action via harvesting', async () => {
-            const action = createReportAction(CONST.REPORT.ACTIONS.TYPE.SUBMITTED_AND_CLOSED, {harvesting: true});
-            renderItemWithAction(action);
-            await waitForBatchedUpdatesWithAct();
-
-            expect(screen.getByText(actorEmail)).toBeOnTheScreen();
-            expect(screen.getByText(translateLocal('iou.automaticallySubmitted'))).toBeOnTheScreen();
+            expect(screen.getByText(/created this report for any held expenses from/)).toBeOnTheScreen();
         });
     });
 
@@ -163,7 +197,17 @@ describe('PureReportActionItem', () => {
             await waitForBatchedUpdatesWithAct();
 
             expect(screen.getByText(actorEmail)).toBeOnTheScreen();
-            expect(screen.getByText(translateLocal('iou.submitted'))).toBeOnTheScreen();
+            expect(screen.getByText(translateLocal('iou.submitted', {}))).toBeOnTheScreen();
+        });
+
+        it('SUBMITTED action with memo', async () => {
+            const memo = 'memo message';
+            const action = createReportAction(CONST.REPORT.ACTIONS.TYPE.SUBMITTED, {harvesting: false, message: memo});
+            renderItemWithAction(action);
+            await waitForBatchedUpdatesWithAct();
+
+            expect(screen.getByText(actorEmail)).toBeOnTheScreen();
+            expect(screen.getByText(translateLocal('iou.submitted', {memo}))).toBeOnTheScreen();
         });
 
         it('SUBMITTED_AND_CLOSED action', async () => {
@@ -172,7 +216,279 @@ describe('PureReportActionItem', () => {
             await waitForBatchedUpdatesWithAct();
 
             expect(screen.getByText(actorEmail)).toBeOnTheScreen();
-            expect(screen.getByText(translateLocal('iou.submitted'))).toBeOnTheScreen();
+            expect(screen.getByText(translateLocal('iou.submitted', {}))).toBeOnTheScreen();
+        });
+    });
+
+    describe('Policy log actions', () => {
+        it('CORPORATE_FORCE_UPGRADE action', async () => {
+            const action = createReportAction(CONST.REPORT.ACTIONS.TYPE.POLICY_CHANGE_LOG.CORPORATE_FORCE_UPGRADE, {automaticAction: false});
+            renderItemWithAction(action);
+            await waitForBatchedUpdatesWithAct();
+
+            expect(screen.getByText(actorEmail)).toBeOnTheScreen();
+            expect(screen.getByText(Parser.htmlToText(translateLocal('workspaceActions.forcedCorporateUpgrade')))).toBeOnTheScreen();
+        });
+    });
+
+    describe('DEW (Dynamic External Workflow) actions', () => {
+        it('should display DEW queued message for pending SUBMITTED action when policy has DEW enabled and offline', async () => {
+            // Given a SUBMITTED action with pendingAction on a policy with DEW (Dynamic External Workflow) enabled
+            const action = createReportAction(CONST.REPORT.ACTIONS.TYPE.SUBMITTED, {harvesting: false});
+            action.pendingAction = CONST.RED_BRICK_ROAD_PENDING_ACTION.ADD;
+
+            const dewPolicy = {
+                id: 'testPolicy',
+                name: 'Test DEW Policy',
+                type: CONST.POLICY.TYPE.TEAM,
+                role: CONST.POLICY.ROLE.ADMIN,
+                owner: 'owner@test.com',
+                outputCurrency: CONST.CURRENCY.USD,
+                isPolicyExpenseChatEnabled: true,
+                approvalMode: CONST.POLICY.APPROVAL_MODE.DYNAMICEXTERNAL,
+            } as const;
+
+            const reportMetadata = {
+                pendingExpenseAction: CONST.EXPENSE_PENDING_ACTION.SUBMIT,
+            };
+
+            await act(async () => {
+                await Onyx.merge(`${ONYXKEYS.COLLECTION.POLICY}testPolicy`, dewPolicy);
+            });
+            await waitForBatchedUpdatesWithAct();
+
+            // When the PureReportActionItem is rendered with the pending SUBMITTED action while offline
+            render(
+                <ComposeProviders components={[OnyxListItemProvider, LocaleContextProvider, HTMLEngineProvider]}>
+                    <OptionsListContextProvider>
+                        <ScreenWrapper testID="test">
+                            <PortalProvider>
+                                <PureReportActionItem
+                                    allReports={undefined}
+                                    personalPolicyID={undefined}
+                                    policies={{testPolicy: dewPolicy as Policy}}
+                                    policy={dewPolicy as Policy}
+                                    report={{reportID: 'testReport', policyID: 'testPolicy'}}
+                                    reportActions={[]}
+                                    parentReportAction={undefined}
+                                    action={action}
+                                    displayAsGroup={false}
+                                    isMostRecentIOUReportAction={false}
+                                    shouldDisplayNewMarker={false}
+                                    index={0}
+                                    isFirstVisibleReportAction={false}
+                                    taskReport={undefined}
+                                    linkedReport={undefined}
+                                    iouReportOfLinkedReport={undefined}
+                                    reportMetadata={reportMetadata}
+                                    currentUserAccountID={ACTOR_ACCOUNT_ID}
+                                    allTransactionDrafts={undefined}
+                                />
+                            </PortalProvider>
+                        </ScreenWrapper>
+                    </OptionsListContextProvider>
+                </ComposeProviders>,
+            );
+            await waitForBatchedUpdatesWithAct();
+
+            // Then it should display the DEW queued message because submission is pending via external workflow while offline
+            expect(screen.getByText(actorEmail)).toBeOnTheScreen();
+            expect(screen.getByText(translateLocal('iou.queuedToSubmitViaDEW'))).toBeOnTheScreen();
+        });
+
+        it('should display standard submitted message for pending SUBMITTED action when policy does not have DEW enabled', async () => {
+            // Given a SUBMITTED action with pendingAction on a policy with basic approval mode (no DEW)
+            const action = createReportAction(CONST.REPORT.ACTIONS.TYPE.SUBMITTED, {harvesting: false});
+            action.pendingAction = CONST.RED_BRICK_ROAD_PENDING_ACTION.ADD;
+
+            const basicPolicy = {
+                id: 'testPolicy',
+                name: 'Test Basic Policy',
+                type: CONST.POLICY.TYPE.TEAM,
+                role: CONST.POLICY.ROLE.ADMIN,
+                owner: 'owner@test.com',
+                outputCurrency: CONST.CURRENCY.USD,
+                isPolicyExpenseChatEnabled: true,
+                approvalMode: CONST.POLICY.APPROVAL_MODE.BASIC,
+            } as const;
+
+            await act(async () => {
+                await Onyx.merge(`${ONYXKEYS.COLLECTION.POLICY}testPolicy`, basicPolicy);
+            });
+            await waitForBatchedUpdatesWithAct();
+
+            // When the PureReportActionItem is rendered with the pending SUBMITTED action
+            render(
+                <ComposeProviders components={[OnyxListItemProvider, LocaleContextProvider, HTMLEngineProvider]}>
+                    <OptionsListContextProvider>
+                        <ScreenWrapper testID="test">
+                            <PortalProvider>
+                                <PureReportActionItem
+                                    allReports={undefined}
+                                    personalPolicyID={undefined}
+                                    policies={{testPolicy: basicPolicy as Policy}}
+                                    policy={basicPolicy as Policy}
+                                    report={{reportID: 'testReport', policyID: 'testPolicy'}}
+                                    reportActions={[]}
+                                    parentReportAction={undefined}
+                                    action={action}
+                                    displayAsGroup={false}
+                                    isMostRecentIOUReportAction={false}
+                                    shouldDisplayNewMarker={false}
+                                    index={0}
+                                    isFirstVisibleReportAction={false}
+                                    taskReport={undefined}
+                                    linkedReport={undefined}
+                                    iouReportOfLinkedReport={undefined}
+                                    currentUserAccountID={ACTOR_ACCOUNT_ID}
+                                    allTransactionDrafts={undefined}
+                                />
+                            </PortalProvider>
+                        </ScreenWrapper>
+                    </OptionsListContextProvider>
+                </ComposeProviders>,
+            );
+            await waitForBatchedUpdatesWithAct();
+
+            // Then it should display the standard submitted message and not the DEW queued message
+            expect(screen.getByText(actorEmail)).toBeOnTheScreen();
+            expect(screen.getByText(translateLocal('iou.submitted', {}))).toBeOnTheScreen();
+            expect(screen.queryByText(translateLocal('iou.queuedToSubmitViaDEW'))).not.toBeOnTheScreen();
+        });
+    });
+
+    describe('Followup list buttons', () => {
+        it('should display followup buttons when message contains unresolved followup-list', async () => {
+            const followupQuestion1 = 'How do I set up QuickBooks?';
+            const followupQuestion2 = 'What is the Expensify Card cashback?';
+
+            const action = {
+                reportActionID: '12345',
+                actorAccountID: CONST.ACCOUNT_ID.CONCIERGE,
+                created: '2025-07-12 09:03:17.653',
+                actionName: CONST.REPORT.ACTIONS.TYPE.ADD_COMMENT,
+                automatic: false,
+                shouldShow: true,
+                avatar: '',
+                person: [{type: 'TEXT', style: 'strong', text: 'Concierge'}],
+                message: [
+                    {
+                        type: CONST.REPORT.MESSAGE.TYPE.COMMENT,
+                        html: `<p>Here is some helpful information.</p>
+<followup-list>
+  <followup><followup-text>${followupQuestion1}</followup-text></followup>
+  <followup><followup-text>${followupQuestion2}</followup-text></followup>
+</followup-list>`,
+                        text: 'Here is some helpful information.',
+                    },
+                ],
+                originalMessage: {},
+            } as ReportAction;
+
+            const report = {
+                reportID: 'testReport',
+                type: CONST.REPORT.TYPE.CHAT,
+            };
+
+            render(
+                <ComposeProviders components={[OnyxListItemProvider, LocaleContextProvider, HTMLEngineProvider]}>
+                    <OptionsListContextProvider>
+                        <ScreenWrapper testID="test">
+                            <PortalProvider>
+                                <PureReportActionItem
+                                    allReports={undefined}
+                                    policies={undefined}
+                                    personalPolicyID={undefined}
+                                    report={report}
+                                    reportActions={[]}
+                                    parentReportAction={undefined}
+                                    action={action}
+                                    displayAsGroup={false}
+                                    isMostRecentIOUReportAction={false}
+                                    shouldDisplayNewMarker={false}
+                                    index={0}
+                                    isFirstVisibleReportAction={false}
+                                    taskReport={undefined}
+                                    linkedReport={undefined}
+                                    iouReportOfLinkedReport={undefined}
+                                    currentUserAccountID={ACTOR_ACCOUNT_ID}
+                                    allTransactionDrafts={undefined}
+                                />
+                            </PortalProvider>
+                        </ScreenWrapper>
+                    </OptionsListContextProvider>
+                </ComposeProviders>,
+            );
+            await waitForBatchedUpdatesWithAct();
+
+            // Verify followup buttons are displayed
+            expect(screen.getByText(followupQuestion1)).toBeOnTheScreen();
+            expect(screen.getByText(followupQuestion2)).toBeOnTheScreen();
+        });
+
+        it('should not display followup buttons when followup-list is resolved (has selected attribute)', async () => {
+            const followupQuestion = 'How do I set up QuickBooks?';
+
+            const action = {
+                reportActionID: '12345',
+                actorAccountID: CONST.ACCOUNT_ID.CONCIERGE,
+                created: '2025-07-12 09:03:17.653',
+                actionName: CONST.REPORT.ACTIONS.TYPE.ADD_COMMENT,
+                automatic: false,
+                shouldShow: true,
+                avatar: '',
+                person: [{type: 'TEXT', style: 'strong', text: 'Concierge'}],
+                message: [
+                    {
+                        type: CONST.REPORT.MESSAGE.TYPE.COMMENT,
+                        html: `<p>Here is some helpful information.</p>
+<followup-list selected>
+  <followup><followup-text>${followupQuestion}</followup-text></followup>
+</followup-list>`,
+                        text: 'Here is some helpful information.',
+                    },
+                ],
+                originalMessage: {},
+            } as ReportAction;
+
+            const report = {
+                reportID: 'testReport',
+                type: CONST.REPORT.TYPE.CHAT,
+            };
+
+            render(
+                <ComposeProviders components={[OnyxListItemProvider, LocaleContextProvider, HTMLEngineProvider]}>
+                    <OptionsListContextProvider>
+                        <ScreenWrapper testID="test">
+                            <PortalProvider>
+                                <PureReportActionItem
+                                    allReports={undefined}
+                                    policies={undefined}
+                                    personalPolicyID={undefined}
+                                    report={report}
+                                    reportActions={[]}
+                                    parentReportAction={undefined}
+                                    action={action}
+                                    displayAsGroup={false}
+                                    isMostRecentIOUReportAction={false}
+                                    shouldDisplayNewMarker={false}
+                                    index={0}
+                                    isFirstVisibleReportAction={false}
+                                    taskReport={undefined}
+                                    linkedReport={undefined}
+                                    iouReportOfLinkedReport={undefined}
+                                    currentUserAccountID={ACTOR_ACCOUNT_ID}
+                                    allTransactionDrafts={undefined}
+                                />
+                            </PortalProvider>
+                        </ScreenWrapper>
+                    </OptionsListContextProvider>
+                </ComposeProviders>,
+            );
+            await waitForBatchedUpdatesWithAct();
+
+            // Verify followup buttons are NOT displayed (resolved state)
+            expect(screen.queryByText(followupQuestion)).not.toBeOnTheScreen();
         });
     });
 });

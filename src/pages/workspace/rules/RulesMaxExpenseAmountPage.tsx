@@ -10,7 +10,7 @@ import useAutoFocusInput from '@hooks/useAutoFocusInput';
 import useLocalize from '@hooks/useLocalize';
 import usePolicy from '@hooks/usePolicy';
 import useThemeStyles from '@hooks/useThemeStyles';
-import {convertToFrontendAmountAsString, getCurrencySymbol} from '@libs/CurrencyUtils';
+import {convertToFrontendAmountAsString} from '@libs/CurrencyUtils';
 import Navigation from '@libs/Navigation/Navigation';
 import type {PlatformStackScreenProps} from '@libs/Navigation/PlatformStackNavigation/types';
 import type {SettingsNavigatorParamList} from '@libs/Navigation/types';
@@ -46,7 +46,7 @@ function RulesMaxExpenseAmountPage({
             <ScreenWrapper
                 enableEdgeToEdgeBottomSafeAreaPadding
                 shouldEnableMaxHeight
-                testID={RulesMaxExpenseAmountPage.displayName}
+                testID="RulesMaxExpenseAmountPage"
             >
                 <HeaderWithBackButton
                     title={translate('workspace.rules.individualExpenseRules.maxExpenseAmount')}
@@ -69,7 +69,7 @@ function RulesMaxExpenseAmountPage({
                             label={translate('iou.amount')}
                             InputComponent={AmountForm}
                             inputID={INPUT_IDS.MAX_EXPENSE_AMOUNT}
-                            currency={getCurrencySymbol(policy?.outputCurrency ?? CONST.CURRENCY.USD)}
+                            currency={policy?.outputCurrency ?? CONST.CURRENCY.USD}
                             defaultValue={defaultValue}
                             isCurrencyPressable={false}
                             ref={inputCallbackRef}
@@ -82,7 +82,5 @@ function RulesMaxExpenseAmountPage({
         </AccessOrNotFoundWrapper>
     );
 }
-
-RulesMaxExpenseAmountPage.displayName = 'RulesMaxExpenseAmountPage';
 
 export default RulesMaxExpenseAmountPage;

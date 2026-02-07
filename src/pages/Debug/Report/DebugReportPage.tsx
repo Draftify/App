@@ -1,5 +1,6 @@
 import React, {useCallback, useMemo} from 'react';
 import {View} from 'react-native';
+import type {OnyxEntry} from 'react-native-onyx';
 import Button from '@components/Button';
 import HeaderWithBackButton from '@components/HeaderWithBackButton';
 import * as Expensicons from '@components/Icon/Expensicons';
@@ -28,6 +29,7 @@ import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import ROUTES from '@src/ROUTES';
 import type SCREENS from '@src/SCREENS';
+import type {ReportAttributesDerivedValue} from '@src/types/onyx';
 import DebugReportActions from './DebugReportActions';
 
 type DebugReportPageProps = PlatformStackScreenProps<DebugParamList, typeof SCREENS.DEBUG.REPORT>;
@@ -56,10 +58,19 @@ function DebugReportPage({
     const [reportActions] = useOnyx(`${ONYXKEYS.COLLECTION.REPORT_ACTIONS}${reportID}`, {canBeMissing: true});
     const [transactions] = useOnyx(ONYXKEYS.COLLECTION.TRANSACTION, {canBeMissing: true});
     const [transactionViolations] = useOnyx(ONYXKEYS.COLLECTION.TRANSACTION_VIOLATIONS, {canBeMissing: true});
-    const [reportAttributes] = useOnyx(ONYXKEYS.DERIVED.REPORT_ATTRIBUTES, {
-        selector: (attributes) => attributes?.reports?.[reportID],
-        canBeMissing: true,
-    });
+    const reportAttributesSelector = useCallback((attributes: OnyxEntry<ReportAttributesDerivedValue>) => attributes?.reports?.[reportID], [reportID]);
+    const [reportAttributes] = useOnyx(
+        ONYXKEYS.DERIVED.REPORT_ATTRIBUTES,
+        {
+            selector: reportAttributesSelector,
+            canBeMissing: true,
+        },
+        [reportAttributesSelector],
+    );
+    const [draftComment] = useOnyx(`${ONYXKEYS.COLLECTION.REPORT_DRAFT_COMMENT}${reportID}`, {canBeMissing: true});
+    const [priorityMode] = useOnyx(ONYXKEYS.NVP_PRIORITY_MODE, {canBeMissing: true});
+    const [betas] = useOnyx(ONYXKEYS.BETAS, {canBeMissing: true});
+    const [conciergeReportID] = useOnyx(ONYXKEYS.CONCIERGE_REPORT_ID, {canBeMissing: true});
     const transactionID = DebugUtils.getTransactionID(report, reportActions);
     const isReportArchived = useReportIsArchived(reportID);
 
@@ -73,10 +84,28 @@ function DebugReportPage({
         const hasViolations = !!shouldDisplayViolations || shouldDisplayReportViolations;
         const {reason: reasonGBR, reportAction: reportActionGBR} = DebugUtils.getReasonAndReportActionForGBRInLHNRow(report, isReportArchived) ?? {};
         const {reason: reasonRBR, reportAction: reportActionRBR} =
-            DebugUtils.getReasonAndReportActionForRBRInLHNRow(report, chatReport, reportActions, transactions, hasViolations, reportAttributes?.reportErrors ?? {}, isReportArchived) ?? {};
+            DebugUtils.getReasonAndReportActionForRBRInLHNRow(
+                report,
+                chatReport,
+                reportActions,
+                transactions,
+                transactionViolations,
+                hasViolations,
+                reportAttributes?.reportErrors ?? {},
+                isReportArchived,
+            ) ?? {};
         const hasRBR = !!reasonRBR;
         const hasGBR = !hasRBR && !!reasonGBR;
-        const reasonLHN = DebugUtils.getReasonForShowingRowInLHN(report, chatReport, hasRBR, isReportArchived);
+        const reasonLHN = DebugUtils.getReasonForShowingRowInLHN({
+            report,
+            chatReport,
+            betas,
+            doesReportHaveViolations: shouldDisplayViolations,
+            hasRBR,
+            isReportArchived,
+            isInFocusMode: priorityMode === CONST.PRIORITY_MODE.GSD,
+            draftComment,
+        });
 
         return [
             {
@@ -121,7 +150,7 @@ function DebugReportPage({
                         : undefined,
             },
         ];
-    }, [chatReport, report, transactionViolations, reportID, reportActions, transactions, reportAttributes?.reportErrors, isReportArchived, translate]);
+    }, [report, transactionViolations, reportID, isReportArchived, chatReport, reportActions, transactions, reportAttributes?.reportErrors, betas, priorityMode, draftComment, translate]);
 
     const DebugDetailsTab = useCallback(
         () => (
@@ -132,7 +161,7 @@ function DebugReportPage({
                     Debug.setDebugData(`${ONYXKEYS.COLLECTION.REPORT}${reportID}`, data);
                 }}
                 onDelete={() => {
-                    navigateToConciergeChatAndDeleteReport(reportID, true, true);
+                    navigateToConciergeChatAndDeleteReport(reportID, conciergeReportID, true, true);
                 }}
                 validate={DebugUtils.validateReportDraftProperty}
             >
@@ -226,7 +255,7 @@ function DebugReportPage({
             includeSafeAreaPaddingBottom={false}
             shouldEnableKeyboardAvoidingView={false}
             shouldEnableMinHeight={canUseTouchScreen()}
-            testID={DebugReportPage.displayName}
+            testID="DebugReportPage"
         >
             {({safeAreaPaddingBottomStyle}) => (
                 <View style={[styles.flex1, safeAreaPaddingBottomStyle]}>
@@ -243,7 +272,5 @@ function DebugReportPage({
         </ScreenWrapper>
     );
 }
-
-DebugReportPage.displayName = 'DebugReportPage';
 
 export default DebugReportPage;

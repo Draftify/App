@@ -1,19 +1,21 @@
 import {useFocusEffect} from '@react-navigation/native';
-import React, {useCallback, useMemo, useState} from 'react';
+import React, {useState} from 'react';
 import FullPageOfflineBlockingView from '@components/BlockingViews/FullPageOfflineBlockingView';
 import Button from '@components/Button';
 import ConfirmModal from '@components/ConfirmModal';
 import HeaderWithBackButton from '@components/HeaderWithBackButton';
 import ScreenWrapper from '@components/ScreenWrapper';
 import SelectionList from '@components/SelectionList';
-import RadioListItem from '@components/SelectionList/RadioListItem';
+import RadioListItem from '@components/SelectionList/ListItem/RadioListItem';
+import useCurrencyForExpensifyCard from '@hooks/useCurrencyForExpensifyCard';
+import useDefaultFundID from '@hooks/useDefaultFundID';
 import useLocalize from '@hooks/useLocalize';
 import useOnyx from '@hooks/useOnyx';
 import usePolicy from '@hooks/usePolicy';
 import useThemeStyles from '@hooks/useThemeStyles';
 import {updateExpensifyCardLimitType} from '@libs/actions/Card';
 import {openPolicyEditCardLimitTypePage} from '@libs/actions/Policy/Policy';
-import {filterInactiveCards} from '@libs/CardUtils';
+import {filterInactiveCards, getDefaultExpensifyCardLimitType} from '@libs/CardUtils';
 import {convertToDisplayString} from '@libs/CurrencyUtils';
 import type {PlatformStackScreenProps} from '@libs/Navigation/PlatformStackNavigation/types';
 import {getApprovalWorkflow} from '@libs/PolicyUtils';
@@ -37,12 +39,12 @@ function WorkspaceEditCardLimitTypePage({route}: WorkspaceEditCardLimitTypePageP
     const styles = useThemeStyles();
 
     const policy = usePolicy(policyID);
-    const workspaceAccountID = policy?.workspaceAccountID ?? CONST.DEFAULT_NUMBER_ID;
-    const [cardsList] = useOnyx(`${ONYXKEYS.COLLECTION.WORKSPACE_CARDS_LIST}${workspaceAccountID}_${CONST.EXPENSIFY_CARD.BANK}`, {selector: filterInactiveCards});
+    const defaultFundID = useDefaultFundID(policyID);
+    const [cardsList] = useOnyx(`${ONYXKEYS.COLLECTION.WORKSPACE_CARDS_LIST}${defaultFundID}_${CONST.EXPENSIFY_CARD.BANK}`, {selector: filterInactiveCards, canBeMissing: true});
 
     const card = cardsList?.[cardID];
     const areApprovalsConfigured = getApprovalWorkflow(policy) !== CONST.POLICY.APPROVAL_MODE.OPTIONAL;
-    const defaultLimitType = areApprovalsConfigured ? CONST.EXPENSIFY_CARD.LIMIT_TYPES.SMART : CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY;
+    const defaultLimitType = getDefaultExpensifyCardLimitType(policy);
     const initialLimitType = card?.nameValuePairs?.limitType ?? defaultLimitType;
     const promptTranslationKey =
         initialLimitType === CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY || initialLimitType === CONST.EXPENSIFY_CARD.LIMIT_TYPES.FIXED
@@ -52,26 +54,27 @@ function WorkspaceEditCardLimitTypePage({route}: WorkspaceEditCardLimitTypePageP
     const [typeSelected, setTypeSelected] = useState(initialLimitType);
     const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
 
+    const currency = useCurrencyForExpensifyCard({policyID});
     const isWorkspaceRhp = route.name === SCREENS.WORKSPACE.EXPENSIFY_CARD_LIMIT_TYPE;
 
-    const goBack = useCallback(() => {
+    const goBack = () => {
         if (backTo) {
             Navigation.goBack(backTo);
             return;
         }
         Navigation.goBack(isWorkspaceRhp ? ROUTES.WORKSPACE_EXPENSIFY_CARD_DETAILS.getRoute(policyID, cardID) : ROUTES.EXPENSIFY_CARD_DETAILS.getRoute(policyID, cardID));
-    }, [backTo, isWorkspaceRhp, policyID, cardID]);
+    };
 
-    const fetchCardLimitTypeData = useCallback(() => {
+    const fetchCardLimitTypeData = () => {
         openPolicyEditCardLimitTypePage(policyID, Number(cardID));
-    }, [policyID, cardID]);
+    };
 
     useFocusEffect(fetchCardLimitTypeData);
 
     const updateCardLimitType = () => {
         setIsConfirmModalVisible(false);
 
-        updateExpensifyCardLimitType(workspaceAccountID, Number(cardID), typeSelected, card?.nameValuePairs?.limitType);
+        updateExpensifyCardLimitType(defaultFundID, Number(cardID), typeSelected, card?.nameValuePairs?.limitType);
 
         goBack();
     };
@@ -104,52 +107,48 @@ function WorkspaceEditCardLimitTypePage({route}: WorkspaceEditCardLimitTypePageP
         }
     };
 
-    const data = useMemo(() => {
-        const options = [];
-        let shouldShowFixedOption = true;
+    const options = [];
+    let shouldShowFixedOption = true;
 
-        if (card?.totalSpend && card?.nameValuePairs?.unapprovedExpenseLimit) {
-            const totalSpend = Math.abs(card.totalSpend);
-            if (
-                (initialLimitType === CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY || initialLimitType === CONST.EXPENSIFY_CARD.LIMIT_TYPES.SMART) &&
-                totalSpend >= card.nameValuePairs?.unapprovedExpenseLimit
-            ) {
-                shouldShowFixedOption = false;
-            }
+    if (card?.totalSpend && card?.nameValuePairs?.unapprovedExpenseLimit) {
+        const totalSpend = Math.abs(card.totalSpend);
+        if (
+            (initialLimitType === CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY || initialLimitType === CONST.EXPENSIFY_CARD.LIMIT_TYPES.SMART) &&
+            totalSpend >= card.nameValuePairs?.unapprovedExpenseLimit
+        ) {
+            shouldShowFixedOption = false;
         }
+    }
 
-        if (areApprovalsConfigured) {
-            options.push({
-                value: CONST.EXPENSIFY_CARD.LIMIT_TYPES.SMART,
-                text: translate('workspace.card.issueNewCard.smartLimit'),
-                alternateText: translate('workspace.card.issueNewCard.smartLimitDescription'),
-                keyForList: CONST.EXPENSIFY_CARD.LIMIT_TYPES.SMART,
-                isSelected: typeSelected === CONST.EXPENSIFY_CARD.LIMIT_TYPES.SMART,
-            });
-        }
-
+    if (areApprovalsConfigured) {
         options.push({
-            value: CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY,
-            text: translate('workspace.card.issueNewCard.monthly'),
-            alternateText: translate('workspace.card.issueNewCard.monthlyDescription'),
-            keyForList: CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY,
-            isMultilineSupported: true,
-            isSelected: typeSelected === CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY,
+            value: CONST.EXPENSIFY_CARD.LIMIT_TYPES.SMART,
+            text: translate('workspace.card.issueNewCard.smartLimit'),
+            alternateText: translate('workspace.card.issueNewCard.smartLimitDescription'),
+            keyForList: CONST.EXPENSIFY_CARD.LIMIT_TYPES.SMART,
+            isSelected: typeSelected === CONST.EXPENSIFY_CARD.LIMIT_TYPES.SMART,
         });
+    }
 
-        if (shouldShowFixedOption) {
-            options.push({
-                value: CONST.EXPENSIFY_CARD.LIMIT_TYPES.FIXED,
-                text: translate('workspace.card.issueNewCard.fixedAmount'),
-                alternateText: translate('workspace.card.issueNewCard.fixedAmountDescription'),
-                keyForList: CONST.EXPENSIFY_CARD.LIMIT_TYPES.FIXED,
-                isMultilineSupported: true,
-                isSelected: typeSelected === CONST.EXPENSIFY_CARD.LIMIT_TYPES.FIXED,
-            });
-        }
+    options.push({
+        value: CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY,
+        text: translate('workspace.card.issueNewCard.monthly'),
+        alternateText: translate('workspace.card.issueNewCard.monthlyDescription'),
+        keyForList: CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY,
+        isMultilineSupported: true,
+        isSelected: typeSelected === CONST.EXPENSIFY_CARD.LIMIT_TYPES.MONTHLY,
+    });
 
-        return options;
-    }, [areApprovalsConfigured, card, initialLimitType, translate, typeSelected]);
+    if (shouldShowFixedOption) {
+        options.push({
+            value: CONST.EXPENSIFY_CARD.LIMIT_TYPES.FIXED,
+            text: translate('workspace.card.issueNewCard.fixedAmount'),
+            alternateText: translate('workspace.card.issueNewCard.fixedAmountDescription'),
+            keyForList: CONST.EXPENSIFY_CARD.LIMIT_TYPES.FIXED,
+            isMultilineSupported: true,
+            isSelected: typeSelected === CONST.EXPENSIFY_CARD.LIMIT_TYPES.FIXED,
+        });
+    }
 
     return (
         <AccessOrNotFoundWrapper
@@ -158,7 +157,7 @@ function WorkspaceEditCardLimitTypePage({route}: WorkspaceEditCardLimitTypePageP
             featureName={CONST.POLICY.MORE_FEATURES.ARE_EXPENSIFY_CARDS_ENABLED}
         >
             <ScreenWrapper
-                testID={WorkspaceEditCardLimitTypePage.displayName}
+                testID="WorkspaceEditCardLimitTypePage"
                 shouldEnablePickerAvoiding={false}
                 shouldEnableMaxHeight
             >
@@ -170,17 +169,17 @@ function WorkspaceEditCardLimitTypePage({route}: WorkspaceEditCardLimitTypePageP
                     <SelectionList
                         ListItem={RadioListItem}
                         onSelectRow={({value}) => setTypeSelected(value)}
-                        sections={[{data}]}
+                        data={options}
                         shouldUpdateFocusedIndex
-                        isAlternateTextMultilineSupported
-                        initiallyFocusedOptionKey={typeSelected}
+                        alternateNumberOfSupportedLines={2}
+                        initiallyFocusedItemKey={typeSelected}
                     />
                     <ConfirmModal
                         title={translate('workspace.expensifyCard.changeCardLimitType')}
                         isVisible={isConfirmModalVisible}
                         onConfirm={updateCardLimitType}
                         onCancel={() => setIsConfirmModalVisible(false)}
-                        prompt={translate(promptTranslationKey, {limit: convertToDisplayString(card?.nameValuePairs?.unapprovedExpenseLimit, CONST.CURRENCY.USD)})}
+                        prompt={translate(promptTranslationKey, convertToDisplayString(card?.nameValuePairs?.unapprovedExpenseLimit, currency))}
                         confirmText={translate('workspace.expensifyCard.changeLimitType')}
                         cancelText={translate('common.cancel')}
                         danger
@@ -199,7 +198,5 @@ function WorkspaceEditCardLimitTypePage({route}: WorkspaceEditCardLimitTypePageP
         </AccessOrNotFoundWrapper>
     );
 }
-
-WorkspaceEditCardLimitTypePage.displayName = 'WorkspaceEditCardLimitTypePage';
 
 export default WorkspaceEditCardLimitTypePage;

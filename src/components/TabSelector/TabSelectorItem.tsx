@@ -1,4 +1,4 @@
-import React, {useLayoutEffect, useRef, useState} from 'react';
+import React, {useLayoutEffect, useMemo, useRef, useState} from 'react';
 // eslint-disable-next-line no-restricted-imports
 import {Animated} from 'react-native';
 import type {View} from 'react-native';
@@ -54,6 +54,9 @@ type TabSelectorItemProps = {
 
     /** Parent width, for computing tooltip placement */
     parentWidth?: number;
+
+    /** Whether tabs should have equal width */
+    equalWidth?: boolean;
 };
 
 function TabSelectorItem({
@@ -70,6 +73,7 @@ function TabSelectorItem({
     renderProductTrainingTooltip,
     parentX = 0,
     parentWidth = 0,
+    equalWidth = false,
 }: TabSelectorItemProps) {
     const styles = useThemeStyles();
     const [isHovered, setIsHovered] = useState(false);
@@ -108,15 +112,19 @@ function TabSelectorItem({
         };
     }, [isActive, childRef, isSmallScreenWidth, parentX, parentWidth]);
 
+    const accessibilityState = useMemo(() => ({selected: isActive}), [isActive]);
+
     const children = (
         <AnimatedPressableWithFeedback
             accessibilityLabel={title}
+            accessibilityState={accessibilityState}
+            accessibilityRole={CONST.ROLE.TAB}
             style={[styles.tabSelectorButton, styles.tabBackground(isHovered, isActive, backgroundColor), styles.userSelectNone]}
-            wrapperStyle={[styles.flexGrow1]}
+            wrapperStyle={[equalWidth ? styles.flex1 : styles.flexGrow1]}
             onPress={onPress}
             onHoverIn={() => setIsHovered(true)}
             onHoverOut={() => setIsHovered(false)}
-            role={CONST.ROLE.BUTTON}
+            role={CONST.ROLE.TAB}
             dataSet={{[CONST.SELECTION_SCRAPER_HIDDEN_ELEMENT]: true}}
             testID={testID}
             ref={childRef}
@@ -131,6 +139,7 @@ function TabSelectorItem({
                     title={title}
                     activeOpacity={styles.tabOpacity(isHovered, isActive, activeOpacity, inactiveOpacity).opacity}
                     inactiveOpacity={styles.tabOpacity(isHovered, isActive, inactiveOpacity, activeOpacity).opacity}
+                    hasIcon={!!icon}
                 />
             )}
         </AnimatedPressableWithFeedback>
@@ -161,7 +170,5 @@ function TabSelectorItem({
         </Tooltip>
     );
 }
-
-TabSelectorItem.displayName = 'TabSelectorItem';
 
 export default TabSelectorItem;

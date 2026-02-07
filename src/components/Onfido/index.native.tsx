@@ -1,10 +1,11 @@
-import {OnfidoCaptureType, OnfidoCountryCode, OnfidoDocumentType, Onfido as OnfidoSDK, OnfidoTheme} from '@onfido/react-native-sdk';
+import {OnfidoCaptureType, OnfidoCountryCode, OnfidoDocumentType, OnfidoNFCOptions, Onfido as OnfidoSDK, OnfidoTheme} from '@onfido/react-native-sdk';
 import React, {useEffect} from 'react';
-import {Alert, Linking, NativeModules} from 'react-native';
+import {Alert, NativeModules} from 'react-native';
 import {checkMultiple, PERMISSIONS, RESULTS} from 'react-native-permissions';
 import FullscreenLoadingIndicator from '@components/FullscreenLoadingIndicator';
 import useLocalize from '@hooks/useLocalize';
 import getPlatform from '@libs/getPlatform';
+import goToSettings from '@libs/goToSettings';
 import Log from '@libs/Log';
 import CONST from '@src/CONST';
 import type {TranslationPaths} from '@src/languages/types';
@@ -19,6 +20,8 @@ function Onfido({sdkToken, onUserExit, onSuccess, onError}: OnfidoProps) {
         OnfidoSDK.start({
             sdkToken,
             theme: OnfidoTheme.AUTOMATIC,
+            // eslint-disable-next-line
+            nfcOption: OnfidoNFCOptions.DISABLED,
             flowSteps: {
                 welcome: true,
                 captureFace: {
@@ -29,7 +32,6 @@ function Onfido({sdkToken, onUserExit, onSuccess, onError}: OnfidoProps) {
                     countryCode: OnfidoCountryCode.USA,
                 },
             },
-            disableNFC: true,
         })
             .then(onSuccess)
             .catch((error: OnfidoError) => {
@@ -42,9 +44,8 @@ function Onfido({sdkToken, onUserExit, onSuccess, onError}: OnfidoProps) {
                 // our "user exited the flow" callback. On web, this event has it's own callback passed as a config so we don't need to bother with this there.
                 if (([CONST.ONFIDO.ERROR.USER_CANCELLED, CONST.ONFIDO.ERROR.USER_TAPPED_BACK, CONST.ONFIDO.ERROR.USER_EXITED] as string[]).includes(errorMessage)) {
                     if (getPlatform() === CONST.PLATFORM.ANDROID) {
-                        AppStateTracker.getApplicationState().then((appState) => {
-                            const wasInBackground = appState.prevState === 'background';
-                            onUserExit(!wasInBackground);
+                        AppStateTracker.getWasAppRelaunchedFromIcon().then((wasAppRelaunchedFromIcon) => {
+                            onUserExit(!wasAppRelaunchedFromIcon);
                         });
                         return;
                     }
@@ -81,7 +82,7 @@ function Onfido({sdkToken, onUserExit, onSuccess, onError}: OnfidoProps) {
                                             text: translate('common.settings'),
                                             onPress: () => {
                                                 onUserExit();
-                                                Linking.openSettings();
+                                                goToSettings();
                                             },
                                         },
                                     ],
@@ -99,12 +100,10 @@ function Onfido({sdkToken, onUserExit, onSuccess, onError}: OnfidoProps) {
                 }
             });
         // Onfido should be initialized only once on mount
-        // eslint-disable-next-line react-compiler/react-compiler, react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return <FullscreenLoadingIndicator />;
 }
-
-Onfido.displayName = 'Onfido';
 
 export default Onfido;
